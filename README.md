@@ -140,36 +140,36 @@ Stores all registered applications supported by the help desk.
 | `description` | TEXT |
 | `owning_team` | VARCHAR(100) |
 | `contact` | VARCHAR(200) |
-
+```
 **Purpose**: Acts as the master table for all software applications.
 
 #### 2. Application Purposes
 Stores business purposes and descriptions of applications.
-
+```
 | Column | Type |
 | :--- | :--- |
 | `id` | Integer (PK) |
 | `application_id` | FK |
 | `purpose_text` | TEXT |
 | `embedding` | VECTOR(768) |
-
+```
 **Purpose**: Allows AI to understand what an application is used for using semantic search.
 
 #### 3. Application Symptoms
 Stores common issues and symptoms associated with applications.
-
+```
 | Column | Type |
 | :--- | :--- |
 | `id` | Integer (PK) |
 | `application_id` | FK |
 | `symptom_text` | TEXT |
 | `embedding` | VECTOR(768) |
-
+```
 **Purpose**: Used for automatic application identification from user complaints.
-
+```
 #### 4. Application Dependencies
 Defines relationships between applications.
-
+```
 | Column | Type |
 | :--- | :--- |
 | `id` | Integer (PK) |
@@ -182,7 +182,7 @@ Defines relationships between applications.
 
 #### 5. Complaint Intake
 Stores raw complaints received from users.
-
+```
 | Column | Type |
 | :--- | :--- |
 | `id` | Integer (PK) |
@@ -193,12 +193,12 @@ Stores raw complaints received from users.
 | `complainant_name` | VARCHAR(100) |
 | `complainant_unit` | VARCHAR(100) |
 | `complainant_rank` | VARCHAR(50) |
-
+```
 **Purpose**: Captures original complaint details before ticket creation.
 
 #### 6. Tickets
 Main ticket tracking table.
-
+```
 | Column | Type |
 | :--- | :--- |
 | `ticket_number` | VARCHAR(20) (PK) |
@@ -211,23 +211,23 @@ Main ticket tracking table.
 | `complainant_service_no` | VARCHAR(20) |
 | `complainant_rank` | VARCHAR(50) |
 | `complainant_unit` | VARCHAR(100) |
-
+```
 **Status Examples**: Open, Assigned, In Progress, Resolved, Closed  
 **Severity Examples**: Low, Medium, High, Critical
 
 #### 7. Ticket Related Applications
 Stores additional applications involved in a ticket.
-
+```
 | Column | Type |
 | :--- | :--- |
 | `ticket_number` | FK |
 | `related_application_id` | FK |
-
+```
 **Purpose**: Supports multi-application incidents.
 
 #### 8. Ticket History
 Maintains an audit trail of ticket updates.
-
+```
 | Column | Type |
 | :--- | :--- |
 | `id` | Integer (PK) |
@@ -237,12 +237,12 @@ Maintains an audit trail of ticket updates.
 | `new_status` | VARCHAR(20) |
 | `notes` | TEXT |
 | `changed_at` | TIMESTAMP |
-
+```
 **Purpose**: Provides complete ticket lifecycle tracking.
 
 #### 9. Learning Examples
 Stores AI learning data.
-
+```
 | Column | Type |
 | :--- | :--- |
 | `id` | Integer (PK) |
@@ -251,6 +251,6 @@ Stores AI learning data.
 | `text_embedding` | VECTOR(768) |
 | `predicted_app_id` | FK |
 | `confirmed_app_id` | FK |
-
+```
 **Purpose**: Used to improve application prediction accuracy.
 
