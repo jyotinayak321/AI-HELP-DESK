@@ -10,7 +10,6 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 *   **Phased Voice Integration**: Features speech-to-text intake and text-to-speech confirmation capabilities (Phase 2/3).
 
 ##Architecture
-
 ```text
 +------------------------------------------------------------------------+
 |                    AIR-GAPPED NETWORK BOUNDARY                         |
