@@ -128,7 +128,7 @@ backend/
 ├── alembic/ # Database Migrations folder
 ├── requirements.txt # Python dependencies (pinned versions)
 └── Dockerfile # Self-contained backend runner container
-
+```
 ### Database Schema
 
 #### 1. Applications
@@ -141,7 +141,7 @@ Stores all registered applications supported by the help desk.
 | `description` | TEXT |
 | `owning_team` | VARCHAR(100) |
 | `contact` | VARCHAR(200) |
-```
+
 **Purpose**: Acts as the master table for all software applications.
 
 #### 2. Application Purposes
