@@ -10,7 +10,7 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 *   **Phased Voice Integration**: Features speech-to-text intake and text-to-speech confirmation capabilities (Phase 2/3).
 
 #Architecture
-
+```text
 +------------------------------------------------------------------------+
 |                    AIR-GAPPED NETWORK BOUNDARY                         |
 |                                                                        |
@@ -22,8 +22,8 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 |  |                 |      (Vite - Node.js 20)     |                 |  |
 |  |                 +------------------------------+                 |  |
 |  +------------------------------|-----------------------------------+  |
-|                                 | HTTPS REST API                       |
-|                                 v                                      |
+|                                 | HTTPS REST API                      |
+|                                 v                                     |
 |  +------------------------------------------------------------------+  |
 |  |            APPLICATION TIER - API & Inference                    |  |
 |  |                                                                  |  |
@@ -45,8 +45,8 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 |  |        |  +----------------+    +-------------------+   |        |  |
 |  |        +-----------------------------|------------------+        |  |
 |  +------------------------------|-----------------------------------+  |
-|                                 | SQL + Vector Operators               |
-|                                 v                                      |
+|                                 | SQL + Vector Operators             |
+|                                 v                                     |
 |  +------------------------------------------------------------------+  |
 |  |              DATA TIER - Persistence & Search                    |  |
 |  |                                                                  |  |
@@ -56,10 +56,8 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 |  |              |   vector(1024) HNSW Index      |                  |  |
 |  |              +--------------------------------+                  |  |
 |  +------------------------------------------------------------------+  |
-|                                                                        |
 +------------------------------------------------------------------------+
-
-
+```
 ## Technology Stack
 *   **Backend**: FastAPI (Python 3.11.x)
 *   **Frontend**: React (Vite, Node.js 20.x LTS)
