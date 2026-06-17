@@ -1,6 +1,6 @@
 # AI Help Desk — Complaint Classification & Logging Application
 ## Project Overview
-The **AI Help Desk** is a secure, intelligent ticketing and triaging system designed for air-gapped enterprise environments (e.g., AFNET). It processes user complaints in **English, Hindi, and Hinglish (code-mixed)** to automatically identify the responsible applications, expand linked system dependencies, classify the fault category, assign severity levels, and route tickets to the appropriate teams. 
+The **AI Help Desk** is a secure, intelligent ticketing and triaging system designed for air-gapped enterprise environments. It processes user complaints in **English, Hindi, and Hinglish (code-mixed)** to automatically identify the responsible applications, expand linked system dependencies, classify the fault category, assign severity levels, and route tickets to the appropriate teams. 
 Unlike systems relying on cloud APIs, this application uses **entirely local AI models** for embeddings, classification, speech-to-text, and text-to-speech. It features a human-in-the-loop validation console and a **retrieval-based learning loop** that allows the system to learn from operator corrections in real time without weight retraining.
 ### Key Capabilities
 *   **Semantic Matching**: Matches natural language complaints against system descriptions using `pgvector` semantic similarity searches.
