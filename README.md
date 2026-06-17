@@ -22,27 +22,61 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
   
 ## Repository Layout
 ```text
-ai-helpdesk-app/
-├── backend/            # FastAPI source code, ML services, tests
-│   ├── app/
-│   │   ├── api/        # Route handlers (applications, intake, tickets, learning)
-│   │   ├── core/       # Config, DB engine setup
-│   │   ├── db/         # SQLAlchemy base, seed scripts
-│   │   ├── models/     # ORM models
-│   │   ├── schemas/    # Pydantic validation schemas
-│   │   ├── services/   # Business logic (ticketing, classification)
-│   │   └── ai/         # Embedder + LLM inference wrappers
-│   ├── tests/
-│   ├── alembic/        # DB migration scripts
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend/           # React SPA
-│   └── src/
-│       ├── features/   # intake/, registry/, tickets/ (feature-based modules)
-│       ├── components/ # Reusable UI components
-│       ├── services/   # Axios API clients
-│       └── hooks/      # Custom hooks
-├── database/           # Schema definitions & migration SQL
-├── docs/               # Architecture documents
-└── offline_assets/     # USB deployment bundles (excluded from git)
+
+backend/
+│
+├── app/
+│ ├── __init__.py
+│ ├── main.py # FastAPI application initialization & middle
+│ │
+│ ├── api/ # API Routing Layer
+│ │ ├── __init__.py
+│ │ ├── deps.py # Dependency injection (DB session, AI models
+│ │ └── v1/
+│ │ ├── router.py # Combines all sub-routers
+│ │ ├── applications.py # Endpoints for registry & dependency mapping
+│ │ ├── intake.py # Endpoint for complaint classification (R-5,
+│ │ ├── tickets.py # Endpoints for ticket lifecycle & routing (R
+│ │ └── learning.py # Endpoints for confirming examples (R-22)
+│ │
+│ ├── core/ # Global configuration & security
+│ │ ├── config.py # Environment variables, model paths, system 
+│ │ └── database.py # SQLAlchemy engine setup and SessionLocal cl
+│ │
+│ ├── db/ # Data Access Layer
+│ │ ├── base.py # Import all models for Alembic migrations
+│ │ ├── base_class.py # Declarative base class with standard mixins
+│ │ └── seed.py # Initial registry database seed (R-4)
+│ │
+│ ├── models/ # SQLAlchemy ORM Models
+│ │ ├── application.py
+│ │ ├── dependency.py
+│ │ ├── ticket.py
+│ │ ├── learning.py
+│ │ └── call_session.py
+│ │
+│ ├── schemas/ # Pydantic Schemas (Data Validation)
+│ │ ├── application.py
+│ │ ├── dependency.py
+│ │ ├── ticket.py
+│ │ ├── intake.py
+│ │ └── learning.py
+│ │
+│ ├── services/ # Business Logic Layer
+│ │ ├── ticketing.py # Ticket numbers generation, auto-routing rul
+│ │ └── classification.py # Dependency expansion, confidence rank logic
+│ │
+│ └── ai/ # AI Inference Layer (Air-gapped models execu
+│ ├── __init__.py
+│ ├── embedder.py # HuggingFace SentenceTransformers integratio
+│ └── llm.py # Ollama / Local LLM API runner client
+│
+├── tests/ # Testing Suite
+│ ├── conftest.py # DB test session and mock models setup
+│ ├── test_api/ # REST API tests
+│ └── test_ai/ # Embedding & classification pipeline unit te
+│
+├── alembic/ # Database Migrations folder
+├── requirements.txt # Python dependencies (pinned versions)
+└── Dockerfile # Self-contained backend runner container
 
