@@ -134,49 +134,49 @@ backend/
 #### 1. Applications
 Stores all registered applications supported by the help desk.
 
-| Column | Type |
-| :--- | :--- |
-| `id` | Integer (PK) |
-| `name` | VARCHAR(100) |
-| `description` | TEXT |
+| Column        | Type         |
+| :---          | :---         |
+| `id`          | Integer (PK) |
+| `name`        | VARCHAR(100) |
+| `description` | TEXT         |
 | `owning_team` | VARCHAR(100) |
-| `contact` | VARCHAR(200) |
+| `contact`     | VARCHAR(200) |
 
 **Purpose**: Acts as the master table for all software applications.
 
 #### 2. Application Purposes
 Stores business purposes and descriptions of applications.
 ```
-| Column | Type |
-| :--- | :--- |
-| `id` | Integer (PK) |
-| `application_id` | FK |
-| `purpose_text` | TEXT |
-| `embedding` | VECTOR(768) |
+| Column           | Type        |
+| :---             | :---        |
+| `id`             | Integer (PK)|
+| `application_id` | FK          |
+| `purpose_text`   | TEXT        |
+| `embedding`      | VECTOR(768) |
 ```
 **Purpose**: Allows AI to understand what an application is used for using semantic search.
 
 #### 3. Application Symptoms
 Stores common issues and symptoms associated with applications.
 ```
-| Column | Type |
-| :--- | :--- |
-| `id` | Integer (PK) |
-| `application_id` | FK |
-| `symptom_text` | TEXT |
-| `embedding` | VECTOR(768) |
+| Column           | Type        |
+| :---             | :---        |
+| `id`             | Integer (PK)|
+| `application_id` | FK          |
+| `symptom_text`   | TEXT        |
+| `embedding`      | VECTOR(768) |
 ```
 **Purpose**: Used for automatic application identification from user complaints.
 ```
 #### 4. Application Dependencies
 Defines relationships between applications.
 ```
-| Column | Type |
-| :--- | :--- |
-| `id` | Integer (PK) |
-| `source_app_id` | FK |
-| `dependent_app_id` | FK |
-| `dependency_nature` | VARCHAR(20) |
+| Column             | Type         |
+| :---               | :---         |
+| `id`               | Integer (PK) |
+| `source_app_id`    | FK           |
+| `dependent_app_id` | FK           |
+| `dependency_nature`| VARCHAR(20)  |
 
 **Example**: Email Service → Authentication Service  
 **Purpose**: Helps identify root causes when multiple applications are affected.
@@ -184,34 +184,34 @@ Defines relationships between applications.
 #### 5. Complaint Intake
 Stores raw complaints received from users.
 ```
-| Column | Type |
-| :--- | :--- |
-| `id` | Integer (PK) |
-| `raw_text` | TEXT |
-| `operator_id` | VARCHAR(50) |
-| `created_at` | TIMESTAMP |
-| `complainant_service_no` | VARCHAR(20) |
-| `complainant_name` | VARCHAR(100) |
-| `complainant_unit` | VARCHAR(100) |
-| `complainant_rank` | VARCHAR(50) |
+| Column                   | Type         |
+| :---                     | :---         |
+| `id`                     | Integer (PK) |
+| `raw_text`               | TEXT         |
+| `operator_id`            | VARCHAR(50)  |
+| `created_at`             | TIMESTAMP    |
+| `complainant_service_no` | VARCHAR(20)  |
+| `complainant_name`       | VARCHAR(100) |
+| `complainant_unit`       | VARCHAR(100) |
+| `complainant_rank`       | VARCHAR(50)  |
 ```
 **Purpose**: Captures original complaint details before ticket creation.
 
 #### 6. Tickets
 Main ticket tracking table.
 ```
-| Column | Type |
-| :--- | :--- |
-| `ticket_number` | VARCHAR(20) (PK) |
-| `intake_id` | FK |
-| `complainant_id` | VARCHAR(50) |
-| `primary_application_id` | FK |
-| `status` | VARCHAR(20) |
-| `fault_type` | VARCHAR(50) |
-| `severity` | VARCHAR(20) |
-| `complainant_service_no` | VARCHAR(20) |
-| `complainant_rank` | VARCHAR(50) |
-| `complainant_unit` | VARCHAR(100) |
+| Column                   | Type             |
+| :---                     | :---             |
+| `ticket_number`          | VARCHAR(20) (PK) |
+| `intake_id`              | FK               |
+| `complainant_id`         | VARCHAR(50)      |
+| `primary_application_id` | FK               |
+| `status`                 | VARCHAR(20)      |
+| `fault_type`             | VARCHAR(50)      |
+| `severity`               | VARCHAR(20)      |
+| `complainant_service_no` | VARCHAR(20)      |
+| `complainant_rank`       | VARCHAR(50)      |
+| `complainant_unit`       | VARCHAR(100)     |
 ```
 **Status Examples**: Open, Assigned, In Progress, Resolved, Closed  
 **Severity Examples**: Low, Medium, High, Critical
@@ -219,39 +219,39 @@ Main ticket tracking table.
 #### 7. Ticket Related Applications
 Stores additional applications involved in a ticket.
 ```
-| Column | Type |
-| :--- | :--- |
-| `ticket_number` | FK |
-| `related_application_id` | FK |
+| Column                   | Type |
+| :---                     | :--- |
+| `ticket_number`          | FK   |
+| `related_application_id` | FK   |
 ```
 **Purpose**: Supports multi-application incidents.
 
 #### 8. Ticket History
 Maintains an audit trail of ticket updates.
 ```
-| Column | Type |
-| :--- | :--- |
-| `id` | Integer (PK) |
-| `ticket_number` | FK |
-| `changed_by` | VARCHAR(50) |
-| `old_status` | VARCHAR(20) |
-| `new_status` | VARCHAR(20) |
-| `notes` | TEXT |
-| `changed_at` | TIMESTAMP |
+| Column          | Type         |
+| :---            | :---         |
+| `id`            | Integer (PK) |
+| `ticket_number` | FK           |
+| `changed_by`    | VARCHAR(50)  |
+| `old_status`    | VARCHAR(20)  |
+| `new_status`    | VARCHAR(20)  |
+| `notes`         | TEXT         |
+| `changed_at`    | TIMESTAMP    |
 ```
 **Purpose**: Provides complete ticket lifecycle tracking.
 
 #### 9. Learning Examples
 Stores AI learning data.
 ```
-| Column | Type |
-| :--- | :--- |
-| `id` | Integer (PK) |
-| `ticket_number` | FK |
-| `raw_text` | TEXT |
-| `text_embedding` | VECTOR(768) |
-| `predicted_app_id` | FK |
-| `confirmed_app_id` | FK |
+| Column             | Type        |
+| :---               | :---        |
+| `id`               | Integer (PK)|
+| `ticket_number`    | FK          |
+| `raw_text`         | TEXT        |
+| `text_embedding`   | VECTOR(768) |
+| `predicted_app_id` | FK          |
+| `confirmed_app_id` | FK          |
 ```
 **Purpose**: Used to improve application prediction accuracy.
 
