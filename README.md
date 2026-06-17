@@ -9,6 +9,10 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 *   **Real-time Learning Loop**: Immediately improves prediction accuracy by searching and retrieving corrected complaints historically as few-shot prompts.
 *   **Phased Voice Integration**: Features speech-to-text intake and text-to-speech confirmation capabilities (Phase 2/3).
 
+##Architecture
+
+<img width="431" height="222" alt="image" src="https://github.com/user-attachments/assets/f8fc8d96-ea8a-46b9-83e2-cfb61f8b229c" />
+
 
 ## Technology Stack
 *   **Backend**: FastAPI (Python 3.11.x)
