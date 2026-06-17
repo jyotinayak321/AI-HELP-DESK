@@ -9,9 +9,55 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 *   **Real-time Learning Loop**: Immediately improves prediction accuracy by searching and retrieving corrected complaints historically as few-shot prompts.
 *   **Phased Voice Integration**: Features speech-to-text intake and text-to-speech confirmation capabilities (Phase 2/3).
 
-##Architecture
+#Architecture
 
-<img width="431" height="222" alt="image" src="https://github.com/user-attachments/assets/f8fc8d96-ea8a-46b9-83e2-cfb61f8b229c" />
++------------------------------------------------------------------------+
+|                    AIR-GAPPED NETWORK BOUNDARY                         |
+|                                                                        |
+|  +------------------------------------------------------------------+  |
+|  |               CLIENT TIER - Operator Console                     |  |
+|  |                                                                  |  |
+|  |                 +------------------------------+                 |  |
+|  |                 |          React SPA           |                 |  |
+|  |                 |      (Vite - Node.js 20)     |                 |  |
+|  |                 +------------------------------+                 |  |
+|  +------------------------------|-----------------------------------+  |
+|                                 | HTTPS REST API                       |
+|                                 v                                      |
+|  +------------------------------------------------------------------+  |
+|  |            APPLICATION TIER - API & Inference                    |  |
+|  |                                                                  |  |
+|  |                 +------------------------------+                 |  |
+|  |                 |        FastAPI Server        |                 |  |
+|  |                 |        (Python 3.11)         |                 |  |
+|  |                 +--------------|---------------+                 |  |
+|  |                                | Local Python Calls / HTTP       |  |
+|  |                                v                                 |  |
+|  |        +------------------------------------------------+        |  |
+|  |        |          Local AI Inference Engine             |        |  |
+|  |        |                                                |        |  |
+|  |        |  +----------------+    +-------------------+   |        |  |
+|  |        |  | Sentence       |    | Ollama / Local    |   |        |  |
+|  |        |  | Transformer    |    | LLM Runner        |   |        |  |
+|  |        |  | multilingual   |    | Qwen 2.5 - 7B     |   |        |  |
+|  |        |  | e5-large       |    |                   |   |        |  |
+|  |        |  | (Embeddings)   |    |                   |   |        |  |
+|  |        |  +----------------+    +-------------------+   |        |  |
+|  |        +-----------------------------|------------------+        |  |
+|  +------------------------------|-----------------------------------+  |
+|                                 | SQL + Vector Operators               |
+|                                 v                                      |
+|  +------------------------------------------------------------------+  |
+|  |              DATA TIER - Persistence & Search                    |  |
+|  |                                                                  |  |
+|  |              +--------------------------------+                  |  |
+|  |              |   PostgreSQL 16 + pgvector     |                  |  |
+|  |              |   Relational Tables +          |                  |  |
+|  |              |   vector(1024) HNSW Index      |                  |  |
+|  |              +--------------------------------+                  |  |
+|  +------------------------------------------------------------------+  |
+|                                                                        |
++------------------------------------------------------------------------+
 
 
 ## Technology Stack
