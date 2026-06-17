@@ -23,9 +23,26 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 ## Repository Layout
 ```text
 ai-helpdesk-app/
-├── backend/            # FastAPI source code, ML services, and tests
-├── frontend/           # React SPA components, state, and styles
-├── database/           # Schema definitions and database migration scripts
-├── docs/               # Architecture documents and reference notes
-└── offline_assets/     # Deployment manifests and local wheels (excluded from git)
+├── backend/            # FastAPI source code, ML services, tests
+│   ├── app/
+│   │   ├── api/        # Route handlers (applications, intake, tickets, learning)
+│   │   ├── core/       # Config, DB engine setup
+│   │   ├── db/         # SQLAlchemy base, seed scripts
+│   │   ├── models/     # ORM models
+│   │   ├── schemas/    # Pydantic validation schemas
+│   │   ├── services/   # Business logic (ticketing, classification)
+│   │   └── ai/         # Embedder + LLM inference wrappers
+│   ├── tests/
+│   ├── alembic/        # DB migration scripts
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend/           # React SPA
+│   └── src/
+│       ├── features/   # intake/, registry/, tickets/ (feature-based modules)
+│       ├── components/ # Reusable UI components
+│       ├── services/   # Axios API clients
+│       └── hooks/      # Custom hooks
+├── database/           # Schema definitions & migration SQL
+├── docs/               # Architecture documents
+└── offline_assets/     # USB deployment bundles (excluded from git)
 
