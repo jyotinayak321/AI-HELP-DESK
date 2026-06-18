@@ -1,4 +1,4 @@
-@'
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import init_db
@@ -27,5 +27,5 @@ def health_check():
         "system": "AI Help Desk",
         "version": "1.0.0"
     }
-'@ | Set-Content backend\main.py
+
 
