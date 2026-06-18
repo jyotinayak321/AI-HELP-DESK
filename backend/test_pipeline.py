@@ -14,16 +14,13 @@ from services.classifier import TicketClassifier
 from services.search import ApplicationSearchEngine
 from services.dependencies import ApplicationDependencyEngine
 
-class MockRow:
-    """Simulates SQLAlchemy dynamic row attribute access."""
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+# Import official Team A database models
+from models import ApplicationSymptom, ApplicationDependency
 
 class MockDatabaseSession:
     """
     Safely intercepts SQLAlchemy execute calls in memory to prevent actual database connections.
-    Provides targeted mock rows matching our master PostgreSQL schema layout.
+    Provides targeted mock rows instantiated directly from official SQLModel schemas.
     """
     def execute(self, query, params=None):
         query_str = str(query).lower()
@@ -36,9 +33,15 @@ class MockDatabaseSession:
 
         # 1. Search Query Intercepts
         if "application_symptoms" in query_str:
-            # Simulate a match for Application ID 4.
-            # search.py uses: score = 1.0 - distance. For a target score of 0.89, distance must be 0.11.
-            return MockResult([MockRow(application_id=4, distance=0.11)])
+            # Instantiate directly from Team A's official model schema
+            symptom_mock = ApplicationSymptom(application_id=4, symptom_text="Simulated Match")
+            
+            # Since the raw SQL query dynamically calculates distance using the <=> operator,
+            # we inject the simulated distance property directly onto the mock model instance
+            # to mimic the structure of the SQLAlchemy Row object returned by execute().
+            symptom_mock.__dict__['distance'] = 0.11
+            
+            return MockResult([symptom_mock])
             
         elif "application_purposes" in query_str or "learning_examples" in query_str:
             # Return empty to isolate our mock test signal
@@ -46,9 +49,14 @@ class MockDatabaseSession:
             
         # 2. Dependency Graph Intercept
         elif "application_dependencies" in query_str:
-            # Simulate a cascading dependency to Application ID 12 exactly tracking the dynamic DB parameters
+            # Simulate a cascading dependency to Application ID 12 using the official model
             if params and params.get("app_id") == 4 and params.get("fault_type") == "login/access":
-                return MockResult([MockRow(dependent_app_id=12)])
+                dependency_mock = ApplicationDependency(
+                    source_app_id=4, 
+                    dependent_app_id=12, 
+                    dependency_nature="login/access"
+                )
+                return MockResult([dependency_mock])
             return MockResult([])
             
         return MockResult([])

@@ -43,18 +43,16 @@ from schemas import (
     VALID_STATUSES,
 )
 
-# --- Import Team B's functions (using stubs until real code is delivered) ---
-from services.stubs import (
-    get_embedding,
-    classify_complaint,
-    find_candidate_apps,
-    expand_dependencies,
-)
+from services.embedder import TextEmbedder
+from services.classifier import TicketClassifier
+from services.search import ApplicationSearchEngine
+from services.dependencies import ApplicationDependencyEngine
 
-# from services.embedder import get_embedding
-# from services.classifier import classify_complaint
-# from services.search import find_candidate_apps
-# from services.dependencies import expand_dependencies
+# Initialize the global instances so they don't load models on every request
+embedder = TextEmbedder()
+classifier = TicketClassifier()
+search_engine = ApplicationSearchEngine()
+dependency_engine = ApplicationDependencyEngine()
 
 router = APIRouter()
 
@@ -142,25 +140,42 @@ def create_intake(
     # -----------------------------------------------------------------
 
     # Step 1: Generate embedding vector from complaint text
-    embedding = get_embedding(request.raw_text)
+    embedding = embedder.get_embedding(request.raw_text)
 
     # Step 2: Classify fault type and severity
-    classification = classify_complaint(request.raw_text)
-    fault_type = classification["fault_type"]
-    severity = classification["severity"]
+    fault_type = classifier.classify_fault_type(request.raw_text)
+    severity = classifier.classify_severity(request.raw_text)
 
     # Step 3: Find candidate applications via vector similarity search
-    raw_candidates = find_candidate_apps(embedding, session)
+    raw_candidates = search_engine.search_candidates(session, embedding)
+    
+    enriched_candidates = []
+    for cand in raw_candidates:
+        app_obj = session.get(Application, cand["application_id"])
+        if app_obj:
+            enriched_candidates.append({
+                "application_id": app_obj.id,
+                "application_name": app_obj.name,
+                "confidence_score": cand["score"]
+            })
 
     # Step 4: Expand dependencies based on fault type (R-10)
-    primary_candidate = raw_candidates[0] if raw_candidates else None
+    primary_candidate = enriched_candidates[0] if enriched_candidates else None
     expanded_deps = []
     if primary_candidate:
-        expanded_deps = expand_dependencies(
+        dep_ids = dependency_engine.expand_dependencies(
+            db_session=session,
             primary_app_id=primary_candidate["application_id"],
             fault_type=fault_type,
-            session=session,
         )
+        for d_id in dep_ids:
+            d_app = session.get(Application, d_id)
+            if d_app:
+                expanded_deps.append({
+                    "application_id": d_id,
+                    "application_name": d_app.name,
+                    "expansion_reason": f"Cascade from {fault_type}"
+                })
 
     # -----------------------------------------------------------------
     # 1d. BUILD THE RESPONSE — Merge candidates + expansions
@@ -168,7 +183,7 @@ def create_intake(
     candidates: list[CandidateApp] = []
 
     # Add direct candidates from vector search
-    for i, cand in enumerate(raw_candidates):
+    for i, cand in enumerate(enriched_candidates):
         candidates.append(
             CandidateApp(
                 application_id=cand["application_id"],
@@ -281,7 +296,7 @@ def confirm_ticket(
     # R-22: Save to learning_examples (prediction vs confirmed)
     # This feeds the AI learning loop.
     # -----------------------------------------------------------------
-    embedding = get_embedding(intake.raw_text)
+    embedding = embedder.get_embedding(intake.raw_text)
     learning_entry = LearningExample(
         ticket_number=ticket_number,
         raw_text=intake.raw_text,
