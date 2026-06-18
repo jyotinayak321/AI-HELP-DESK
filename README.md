@@ -74,60 +74,26 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 
 backend/
 │
-├── app/
-│ ├── __init__.py
-│ ├── main.py # FastAPI application initialization & middle
-│ │
-│ ├── api/ # API Routing Layer
-│ │ ├── __init__.py
-│ │ ├── deps.py # Dependency injection (DB session, AI models
-│ │ └── v1/
-│ │ ├── router.py # Combines all sub-routers
-│ │ ├── applications.py # Endpoints for registry & dependency mapping
-│ │ ├── intake.py # Endpoint for complaint classification (R-5,
-│ │ ├── tickets.py # Endpoints for ticket lifecycle & routing (R
-│ │ └── learning.py # Endpoints for confirming examples (R-22)
-│ │
-│ ├── core/ # Global configuration & security
-│ │ ├── config.py # Environment variables, model paths, system 
-│ │ └── database.py # SQLAlchemy engine setup and SessionLocal cl
-│ │
-│ ├── db/ # Data Access Layer
-│ │ ├── base.py # Import all models for Alembic migrations
-│ │ ├── base_class.py # Declarative base class with standard mixins
-│ │ └── seed.py # Initial registry database seed (R-4)
-│ │
-│ ├── models/ # SQLAlchemy ORM Models
-│ │ ├── application.py
-│ │ ├── dependency.py
-│ │ ├── ticket.py
-│ │ ├── learning.py
-│ │ └── call_session.py
-│ │
-│ ├── schemas/ # Pydantic Schemas (Data Validation)
-│ │ ├── application.py
-│ │ ├── dependency.py
-│ │ ├── ticket.py
-│ │ ├── intake.py
-│ │ └── learning.py
-│ │
-│ ├── services/ # Business Logic Layer
-│ │ ├── ticketing.py # Ticket numbers generation, auto-routing rul
-│ │ └── classification.py # Dependency expansion, confidence rank logic
-│ │
-│ └── ai/ # AI Inference Layer (Air-gapped models execu
-│ ├── __init__.py
-│ ├── embedder.py # HuggingFace SentenceTransformers integratio
-│ └── llm.py # Ollama / Local LLM API runner client
+├── requirements.txt      # Dependencies
+├── main.py               # App entry point & server config
+├── config.py             # Environment variables (DB connection strings)
+├── database.py           # SQLModel engine & session management
+├── models.py             # SQLModel table schemas (from our DB dump)
+├── schemas.py            # Pydantic validation for API inputs/outputs
 │
-├── tests/ # Testing Suite
-│ ├── conftest.py # DB test session and mock models setup
-│ ├── test_api/ # REST API tests
-│ └── test_ai/ # Embedding & classification pipeline unit te
+├── local_models/         # Offline HuggingFace Weights (Air-gapped - R-27)
 │
-├── alembic/ # Database Migrations folder
-├── requirements.txt # Python dependencies (pinned versions)
-└── Dockerfile # Self-contained backend runner container
+├── services/             # 🧠 TEAM B DOMAIN (AI & Business Rules)
+│   ├── _init_.py
+│   ├── embedder.py       # Handles R-8, R-25 (Multilingual pgvector)
+│   ├── classifier.py     # Handles R-11, R-12 (Fault & Severity)
+│   ├── search.py         # Handles R-9, R-24 (Candidate ranking & Learning Loop)
+│   └── dependencies.py   # Handles R-10 (Conditional mapping)
+│
+└── routers/              # ⚙️ TEAM A DOMAIN (API Endpoints)
+    ├── _init_.py
+    ├── admin.py          # Handles R-3, R-4 (App Registry CRUD)
+    └── tickets.py        # Handles R-5 to R-7, R-13 to R-21 (Intake & Lifecycle)
 ```
 ### Database Schema
 
