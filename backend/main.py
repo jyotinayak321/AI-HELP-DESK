@@ -5,7 +5,7 @@ from routers.tickets import router as tickets_router
 
 app = FastAPI(
     title="AI Help Desk",
-    description="Complaint Classification & Logging Application Phase 1",
+    description="Complaint Classification Phase 1",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -19,13 +19,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(admin_router, prefix="/api/admin", tags=["Admin and Registry"])
-app.include_router(tickets_router, prefix="/api", tags=["Intake and Tickets"])
+app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
+app.include_router(tickets_router, prefix="/api", tags=["Tickets"])
 
 @app.get("/", tags=["Health"])
 def health_check():
-    return {
-        "status": "ok",
-        "service": "AI Help Desk API",
-        "version": "1.0.0",
-    }
+    return {"status": "ok", "version": "1.0.0"}
