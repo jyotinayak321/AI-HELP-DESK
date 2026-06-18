@@ -5,6 +5,10 @@ import sys
 # Ensure backend directory is in the path to resolve imports correctly across OS environments
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+# Force UTF-8 encoding for Windows terminals to support emoji printing
+if sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+
 from services.embedder import TextEmbedder
 from services.classifier import TicketClassifier
 from services.search import ApplicationSearchEngine
@@ -42,8 +46,8 @@ class MockDatabaseSession:
             
         # 2. Dependency Graph Intercept
         elif "application_dependencies" in query_str:
-            # Simulate a cascading dependency to Application ID 12
-            if params and params.get("app_id") == 4:
+            # Simulate a cascading dependency to Application ID 12 exactly tracking the dynamic DB parameters
+            if params and params.get("app_id") == 4 and params.get("fault_type") == "login/access":
                 return MockResult([MockRow(dependent_app_id=12)])
             return MockResult([])
             

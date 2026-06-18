@@ -6,49 +6,32 @@ class ApplicationDependencyEngine:
     """
     Handles conditional dependency expansion to traverse infrastructure graphs
     while filtering out noisy/irrelevant alerts based on the AI's predicted fault type.
-    Satisfies Requirement R-10.
+    Satisfies Requirement R-10, entirely driven dynamically from the database (R-3).
     """
-
-    # Centralized Routing Filter mapping fault types to relevant dependency infrastructure categories
-    FAULT_NATURE_MAP = {
-        "login/access": ["auth"],
-        "performance/slow": ["database", "network", "api"],
-        "data error": ["database"],
-        "total outage": ["auth", "database", "network", "api"],
-        "partial/degraded": ["database", "network", "api"],
-        "cosmetic/UI": [],
-        "other": []
-    }
 
     def expand_dependencies(self, db_session: Session, primary_app_id: Optional[int], fault_type: str) -> List[int]:
         """
-        Conditionally queries the application_dependencies graph table to find underlying root causes.
+        Conditionally queries the application_dependencies graph table to find underlying root causes
+        by exactly matching the predicted fault_type with the configured dependency_nature.
         """
         # Edge Case Protection: Invalid application IDs or empty fault types
         if not primary_app_id or not fault_type:
             return []
 
         clean_fault_type = fault_type.strip()
-
-        # Look up allowed dependency categories for the incoming fault
-        allowed_categories = self.FAULT_NATURE_MAP.get(clean_fault_type, [])
-
-        # If the fault type has no mapped dependencies (like cosmetic/UI), skip DB lookups entirely
-        if not allowed_categories:
+        if not clean_fault_type:
             return []
 
-        # Safely inject the strictly controlled category lists into the IN clause
-        categories_str = ", ".join(f"'{cat}'" for cat in allowed_categories)
-
-        query = text(f"""
+        # Raw query blindly traversing the DB without hardcoded dictionaries
+        query = text("""
             SELECT dependent_app_id
             FROM application_dependencies
             WHERE source_app_id = :app_id
-            AND dependency_nature IN ({categories_str})
+            AND dependency_nature = :fault_type
         """)
 
         # Execute query against the session
-        results = db_session.execute(query, {"app_id": primary_app_id}).fetchall()
+        results = db_session.execute(query, {"app_id": primary_app_id, "fault_type": clean_fault_type}).fetchall()
 
         # Extract and return a unique list of dependent application IDs
         dependent_ids = list(set(row.dependent_app_id for row in results if row.dependent_app_id is not None))
