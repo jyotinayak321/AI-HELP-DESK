@@ -12,52 +12,140 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 ## Architecture
 ```text
 
-+------------------------------------------------------------------------+
-|                    AIR-GAPPED NETWORK BOUNDARY                         |
-|                                                                        |
-|  +------------------------------------------------------------------+  |
-|  |               CLIENT TIER - Operator Console                     |  |
-|  |                                                                  |  |
-|  |                 +------------------------------+                 |  |
-|  |                 |          React SPA           |                 |  |
-|  |                 |      (Vite - Node.js 20)     |                 |  |
-|  |                 +------------------------------+                 |  |
-|  +------------------------------|-----------------------------------+  |
-|                                 | HTTPS REST API                      |
-|                                 v                                     |
-|  +------------------------------------------------------------------+  |
-|  |            APPLICATION TIER - API & Inference                    |  |
-|  |                                                                  |  |
-|  |                 +------------------------------+                 |  |
-|  |                 |        FastAPI Server        |                 |  |
-|  |                 |        (Python 3.11)         |                 |  |
-|  |                 +--------------|---------------+                 |  |
-|  |                                | Local Python Calls / HTTP       |  |
-|  |                                v                                 |  |
-|  |        +------------------------------------------------+        |  |
-|  |        |          Local AI Inference Engine             |        |  |
-|  |        |                                                |        |  |
-|  |        |  +----------------+    +-------------------+   |        |  |
-|  |        |  | Sentence       |    | Ollama / Local    |   |        |  |
-|  |        |  | Transformer    |    | LLM Runner        |   |        |  |
-|  |        |  | multilingual   |    | Qwen 2.5 - 7B     |   |        |  |
-|  |        |  | e5-large       |    |                   |   |        |  |
-|  |        |  | (Embeddings)   |    |                   |   |        |  |
-|  |        |  +----------------+    +-------------------+   |        |  |
-|  |        +-----------------------------|------------------+        |  |
-|  +------------------------------|-----------------------------------+  |
-|                                 | SQL + Vector Operators             |
-|                                 v                                     |
-|  +------------------------------------------------------------------+  |
-|  |              DATA TIER - Persistence & Search                    |  |
-|  |                                                                  |  |
-|  |              +--------------------------------+                  |  |
-|  |              |   PostgreSQL 16 + pgvector     |                  |  |
-|  |              |   Relational Tables +          |                  |  |
-|  |              |   vector(1024) HNSW Index      |                  |  |
-|  |              +--------------------------------+                  |  |
-|  +------------------------------------------------------------------+  |
-+------------------------------------------------------------------------+
+╔════════════════════════════════════════════════════════════════════════╗
+║                    AI HELP DESK — SYSTEM ARCHITECTURE                 ║
+║                    Fully Offline / Air-Gapped System                  ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                        LAYER 1 — PRESENTATION                        │
+│                         React + Vite SPA                              │
+│                                                                      │
+│  • Complaint Submission Interface                                    │
+│  • Admin Application Registry                                        │
+│  • Ticket Dashboard & Tracking                                       │
+│  • AI Analysis Display                                               │
+└──────────────────────────────────────────────────────────────────────┘
+                                │
+                                │ HTTPS / REST + JSON
+                                ▼
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                        LAYER 2 — API & BUSINESS LOGIC                │
+│                    FastAPI + Python 3.11 + Uvicorn                   │
+│                                                                      │
+│  main.py                                                             │
+│      │                                                               │
+│      ├── config.py        → Environment & Settings                   │
+│      ├── routers/         → API Endpoints                            │
+│      │      ├── admin.py  → Application Registry APIs                │
+│      │      └── tickets.py→ Ticket Lifecycle APIs                    │
+│      │                                                               │
+│      ├── schemas.py       → Request/Response Validation              │
+│      ├── models.py        → Database ORM Models                      │
+│      └── database.py      → PostgreSQL Connection & Sessions         │
+└──────────────────────────────────────────────────────────────────────┘
+                                │
+                                │ Calls AI Services
+                                ▼
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                         LAYER 3 — AI ENGINE                          │
+│                        Fully Offline Processing                      │
+│                                                                      │
+│  User Complaint Text                                                 │
+│          │                                                           │
+│          ▼                                                           │
+│  embedder.py                                                         │
+│  MiniLM-L12-v2 → Converts text into 1024-dimensional vectors         │
+│          │                                                           │
+│          ▼                                                           │
+│  search.py                                                           │
+│  pgvector + HNSW → Finds similar historical incidents                │
+│          │                                                           │
+│          ▼                                                           │
+│  classifier.py                                                       │
+│  Qwen 2.5-7B via Ollama → Fault Category & Severity Analysis         │
+│          │                                                           │
+│          ▼                                                           │
+│  dependencies.py                                                     │
+│  Dependency Graph → Finds affected applications/services             │
+└──────────────────────────────────────────────────────────────────────┘
+                                │
+                                │ Read / Write
+                                ▼
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                         LAYER 4 — DATA LAYER                         │
+│                PostgreSQL 16 + pgvector + Docker                     │
+│                                                                      │
+│  Application Knowledge Base                                          │
+│  ├── applications                                                    │
+│  ├── app_symptoms                                                    │
+│  ├── app_purposes                                                    │
+│  └── app_dependencies                                                │
+│                                                                      │
+│  Ticket Management                                                   │
+│  ├── intakes                                                         │
+│  ├── tickets                                                         │
+│  ├── ticket_rel_apps                                                 │
+│  └── ticket_history                                                  │
+│                                                                      │
+│  AI Learning & RAG Memory                                            │
+│  ├── learning_examples                                               │
+│  ├── vector(1024) embeddings                                         │
+│  └── HNSW cosine similarity index                                    │
+└──────────────────────────────────────────────────────────────────────┘
+                                │
+                                │ Local Infrastructure
+                                ▼
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                      LAYER 5 — DEPLOYMENT STACK                      │
+│                    Offline Internal Network                          │
+│                                                                      │
+│  AI Runtime                                                          │
+│  ├── Ollama Server (Port 11434)                                      │
+│  └── Qwen 2.5-7B Model                                               │
+│                                                                      │
+│  Containers                                                          │
+│  └── Docker → PostgreSQL + pgvector                                  │
+│                                                                      │
+│  Python Environment                                                  │
+│  └── Wheelhouse → Offline pip package installation                   │
+│                                                                      │
+│  Frontend Build                                                      │
+│  └── Vite dist/ static files                                         │
+└──────────────────────────────────────────────────────────────────────┘
+
+
+                           END-TO-END FLOW
+
+ User
+  │
+  ▼
+ React UI
+  │
+  ▼
+ FastAPI API
+  │
+  ▼
+ AI Pipeline
+  │
+  ├── Embedding (MiniLM)
+  ├── Similarity Search (pgvector)
+  ├── Classification (Qwen)
+  └── Dependency Analysis
+  │
+  ▼
+ PostgreSQL Database
+  │
+  ▼
+ Ticket Creation & AI Response
+  │
+  ▼
+ Dashboard / Admin Panel
 ```
 ## Technology Stack
 *   **Backend**: FastAPI (Python 3.11.x)
