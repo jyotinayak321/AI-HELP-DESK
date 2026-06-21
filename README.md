@@ -182,6 +182,45 @@ backend/
     ├── _init_.py
     ├── admin.py          # Handles R-3, R-4 (App Registry CRUD)
     └── tickets.py        # Handles R-5 to R-7, R-13 to R-21 (Intake & Lifecycle)
+
+frontend/src/
+│
+├── App.jsx                  ← Main router, sabka baap
+├── index.css                ← Global styles
+├── index.html               ← HTML entry point
+├── main.jsx                 ← React app start hota hai yahan se
+│
+├── api/                     ← Backend se baat karne wale files
+│   ├── axios.js             ← Axios instance (base URL etc)
+│   ├── registry.api.js      ← Applications registry ke API calls
+│   └── tickets.api.js       ← Tickets ke API calls
+│
+├── assets/                  ← Images, icons
+│   ├── hero.png
+│   ├── react.svg
+│   └── vite.svg
+│
+├── components/
+│   ├── layout/              ← Page layout
+│   │   ├── Sidebar.jsx      ← Left navigation
+│   │   └── Topbar.jsx       ← Top header
+│   │
+│   └── ui/                  ← Reusable small components
+│       ├── Badge.jsx        ← Status badges (Open, Closed etc)
+│       ├── ErrorMessage.jsx ← Error show karne ke liye
+│       ├── LoadingSpinner.jsx ← Loading animation
+│       └── StatCard.jsx     ← Dashboard cards
+│
+├── constants/
+│   └── enums.js             ← Fault types, severity, status values
+│
+└── pages/                   ← Har page ek alag file
+    ├── ClassifyReview.jsx   ← AI classification review
+    ├── Dashboard.jsx        ← Home dashboard
+    ← Registry.jsx          ← Application registry
+    ├── SubmitComplaint.jsx  ← Complaint form
+    ├── TicketDetail.jsx     ← Single ticket detail
+    └── TicketList.jsx       ← All tickets list
 ```
 ### Database Schema
 
