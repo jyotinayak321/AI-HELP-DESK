@@ -21,9 +21,9 @@ from typing import Optional
 from database import get_session
 from models import (
     Application,
-    ComplaintIntake,
+    Intake,
     Ticket,
-    TicketRelatedApplication,
+    TicketRelatedApp,
     TicketHistory,
     LearningExample,
 )
@@ -109,7 +109,7 @@ def create_intake(
     # -----------------------------------------------------------------
     # 1a. Save the raw complaint to complaint_intake table
     # -----------------------------------------------------------------
-    intake = ComplaintIntake(
+    intake = Intake(
         raw_text=request.raw_text,
         operator_id=request.operator_id,
         complainant_service_no=request.complainant_service_no,
@@ -254,7 +254,7 @@ def confirm_ticket(
         raise HTTPException(status_code=404, detail=f"Application ID {request.confirmed_app_id} not found.")
 
     # Look up the intake record
-    intake = session.get(ComplaintIntake, request.intake_id)
+    intake = session.get(Intake, request.intake_id)
     if not intake:
         raise HTTPException(status_code=404, detail=f"Intake ID {request.intake_id} not found.")
 
@@ -278,6 +278,7 @@ def confirm_ticket(
         complainant_unit=intake.complainant_unit,
     )
     session.add(ticket)
+    session.flush()  # Force INSERT into tickets table so foreign keys pass
 
     # -----------------------------------------------------------------
     # R-15: Insert related applications into junction table
@@ -286,7 +287,7 @@ def confirm_ticket(
         if related_id != request.confirmed_app_id:  # Don't duplicate primary
             related_app = session.get(Application, related_id)
             if related_app:
-                rel = TicketRelatedApplication(
+                rel = TicketRelatedApp(
                     ticket_number=ticket_number,
                     related_application_id=related_id,
                 )

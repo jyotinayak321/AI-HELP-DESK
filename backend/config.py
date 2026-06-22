@@ -4,7 +4,7 @@ from functools import lru_cache
 class Settings(BaseSettings):
 
     # -- Database ----------------------------
-    DATABASE_URL: str = "postgresql://postgres:root@localhost:5432/helpdesk"
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/helpdesk_db"
 
     # -- Server ------------------------------
     HOST: str = "0.0.0.0"

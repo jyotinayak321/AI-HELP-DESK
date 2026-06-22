@@ -50,7 +50,7 @@ class ApplicationSymptom(SQLModel, table=True):
     symptom_text   : str
     embedding      : Optional[List[float]] = Field(
                          default=None,
-                         sa_column=Column(Vector(1024))
+                         sa_column=Column(Vector(768))
                      )
 
 # TABLE 3: application_purposes
@@ -61,7 +61,7 @@ class ApplicationPurpose(SQLModel, table=True):
     purpose_text   : str
     embedding      : Optional[List[float]] = Field(
                          default=None,
-                         sa_column=Column(Vector(1024))
+                         sa_column=Column(Vector(768))
                      )
 
 # TABLE 4: application_dependencies
@@ -97,6 +97,7 @@ class Ticket(SQLModel, table=True):
     complainant_service_no : Optional[str] = Field(default=None, max_length=20)
     complainant_rank       : Optional[str] = Field(default=None, max_length=50)
     complainant_unit       : Optional[str] = Field(default=None, max_length=100)
+    created_at             : Optional[datetime] = Field(default_factory=datetime.utcnow)
 
 # TABLE 7: ticket_related_apps
 class TicketRelatedApp(SQLModel, table=True):
@@ -112,7 +113,7 @@ class LearningExample(SQLModel, table=True):
     raw_text         : str
     text_embedding   : Optional[List[float]] = Field(
                            default=None,
-                           sa_column=Column(Vector(1024))
+                           sa_column=Column(Vector(768))
                        )
     predicted_app_id : Optional[int] = Field(default=None, foreign_key="applications.id")
     confirmed_app_id : Optional[int] = Field(default=None, foreign_key="applications.id")

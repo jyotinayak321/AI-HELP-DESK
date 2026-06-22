@@ -48,19 +48,19 @@ class ApplicationSearchEngine:
         res_symptoms = db_session.execute(query_symptoms, params).fetchall()
         res_purposes = db_session.execute(query_purposes, params).fetchall()
 
-        # Aggregation Dictionary to track best score per application_id
+        # Aggregation Dictionary to track best score per app_id
         candidate_scores = {}
 
         def process_results(results):
             for row in results:
-                if row.application_id is None or row.distance is None:
+                if row.app_id is None or row.distance is None:
                     continue
-                # Convert cosine distance to similarity score
-                similarity = 1.0 - float(row.distance)
+                # Convert cosine distance to similarity score (clamped to 0.0 - 1.0)
+                similarity = max(0.0, min(1.0, 1.0 - float(row.distance)))
                 
                 # Merge logic: Take highest similarity score found across all tables
-                if row.application_id not in candidate_scores or similarity > candidate_scores[row.application_id]:
-                    candidate_scores[row.application_id] = similarity
+                if row.app_id not in candidate_scores or similarity > candidate_scores[row.app_id]:
+                    candidate_scores[row.app_id] = similarity
 
         # Process all three distinct vector sources
         process_results(res_learning)

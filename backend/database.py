@@ -1,9 +1,8 @@
 from sqlmodel import create_engine, Session
 from sqlalchemy import text
+from config import settings
 
-DATABASE_URL = "postgresql://postgres:root@localhost:5432/helpdesk"
-
-engine = create_engine(DATABASE_URL, echo=True)
+engine = create_engine(settings.DATABASE_URL, echo=True)
 
 def init_db():
     with engine.connect() as conn:

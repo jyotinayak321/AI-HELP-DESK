@@ -41,6 +41,10 @@ class MockDatabaseSession:
             # to mimic the structure of the SQLAlchemy Row object returned by execute().
             symptom_mock.__dict__['distance'] = 0.11
             
+            # search.py aliases the application_id column to app_id (`AS app_id`), 
+            # so we must inject that property into the mock as well.
+            symptom_mock.__dict__['app_id'] = symptom_mock.application_id
+            
             return MockResult([symptom_mock])
             
         elif "application_purposes" in query_str or "learning_examples" in query_str:
