@@ -537,4 +537,3 @@ ALTER TABLE ONLY public.tickets
 --
 
 \unrestrict PiQlBptRJBcFxbdFgQaJDKyYNAsM1LgsVV4ADXHpy11lDLHJUOeke35Dl7r6TVc
-
