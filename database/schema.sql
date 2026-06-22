@@ -80,7 +80,7 @@ CREATE TABLE public.application_purposes (
     id integer NOT NULL,
     application_id integer,
     purpose_text text NOT NULL,
-    embedding public.vector(1024)
+    embedding public.vector(768)
 );
 
 
@@ -108,7 +108,7 @@ CREATE TABLE public.application_symptoms (
     id integer NOT NULL,
     application_id integer NOT NULL,
     symptom_text text NOT NULL,
-    embedding public.vector(1024)
+    embedding public.vector(768)
 );
 
 
@@ -221,7 +221,7 @@ CREATE TABLE public.learning_examples (
     id integer NOT NULL,
     ticket_number character varying(20),
     raw_text text NOT NULL,
-    text_embedding public.vector(1024),
+    text_embedding public.vector(768),
     predicted_app_id integer,
     confirmed_app_id integer
 );
@@ -316,7 +316,8 @@ CREATE TABLE public.tickets (
     severity character varying(20) DEFAULT 'medium'::character varying,
     complainant_service_no character varying(20),
     complainant_rank character varying(50),
-    complainant_unit character varying(100)
+    complainant_unit character varying(100),
+    created_at timestamp without time zone DEFAULT now()
 );
 
 
