@@ -391,6 +391,29 @@ def list_tickets(
             app = session.get(Application, t.primary_application_id)
             app_name = app.name if app else None
 
+        # Resolve original complaint text from the linked intake
+        complaint_text = None
+        if t.intake_id:
+            intake = session.get(Intake, t.intake_id)
+            complaint_text = intake.raw_text if intake else None
+
+        # Resolve cascaded dependencies
+        deps = []
+        if t.primary_application_id and t.fault_type:
+            dep_ids = dependency_engine.expand_dependencies(
+                db_session=session,
+                primary_app_id=t.primary_application_id,
+                fault_type=t.fault_type,
+            )
+            for d_id in dep_ids:
+                d_app = session.get(Application, d_id)
+                if d_app:
+                    deps.append({
+                        "application_id": d_id,
+                        "application_name": d_app.name,
+                        "dependency_nature": t.fault_type
+                    })
+
         ticket_responses.append(
             TicketResponse(
                 ticket_number=t.ticket_number,
@@ -399,9 +422,11 @@ def list_tickets(
                 complainant_unit=t.complainant_unit or "",
                 primary_application_id=t.primary_application_id,
                 primary_application_name=app_name,
+                original_complaint_text=complaint_text,
                 status=t.status,
                 fault_type=t.fault_type,
                 severity=t.severity,
+                dependencies=deps,
                 created_at=t.created_at,
             )
         )

@@ -6,7 +6,7 @@ Person 2 owns this file.
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 
@@ -26,9 +26,17 @@ VALID_FAULT_TYPES = [
 
 VALID_SEVERITIES = ["critical", "high", "normal", "low"]
 
-VALID_STATUSES = ["open", "assigned", "in_progress", "resolved", "closed"]
+VALID_STATUSES = ["open", "triage", "assigned", "in_progress", "resolved", "closed", "reopened"]
 
-VALID_DEPENDENCY_NATURES = ["auth", "data", "network"]
+VALID_DEPENDENCY_NATURES = [
+    "login/access", 
+    "performance/slow", 
+    "data error", 
+    "total outage", 
+    "partial/degraded", 
+    "cosmetic/UI", 
+    "other"
+]
 
 
 # =====================================================================
@@ -200,9 +208,11 @@ class TicketResponse(BaseModel):
     complainant_unit: str = ""
     primary_application_id: Optional[int] = None
     primary_application_name: Optional[str] = None
+    original_complaint_text: Optional[str] = None
     status: str
     fault_type: str
     severity: str
+    dependencies: List[dict] = Field(default_factory=list)
     created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
