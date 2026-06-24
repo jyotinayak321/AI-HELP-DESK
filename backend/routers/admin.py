@@ -11,6 +11,7 @@ from models import (
     ApplicationDependency,
     ApplicationPurpose,
     ApplicationSymptom,
+    ClassificationConfig
 )
 from schemas import (
     ApplicationCreate,
@@ -177,6 +178,12 @@ def seed_database(data: dict, session: Session = Depends(get_session)):
             if not existing:
                 symptom = ApplicationSymptom(application_id=sym_data["application_id"], symptom_text=sym_data["symptom_text"], embedding=embedder.get_embedding(sym_data["symptom_text"]))
                 session.add(symptom)
+
+        for cfg_data in data.get("classification_configs", []):
+            existing = session.exec(select(ClassificationConfig).where(ClassificationConfig.category == cfg_data["category"], ClassificationConfig.label == cfg_data["label"])).first()
+            if not existing:
+                cfg = ClassificationConfig(category=cfg_data["category"], label=cfg_data["label"], description=cfg_data["description"])
+                session.add(cfg)
 
         for dep_data in data.get("application_dependencies", []):
             existing = session.exec(select(ApplicationDependency).where(ApplicationDependency.source_app_id == dep_data["source_app_id"], ApplicationDependency.dependent_app_id == dep_data["dependent_app_id"])).first()

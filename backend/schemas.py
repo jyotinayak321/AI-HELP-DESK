@@ -147,6 +147,14 @@ class CandidateApp(BaseModel):
     )
 
 
+class DuplicateInfo(BaseModel):
+    """Information about a potential duplicate ticket."""
+    ticket_number: str
+    complainant_service_no: str
+    text_snippet: str
+    status: str
+    is_same_user: bool
+
 class IntakeResponse(BaseModel):
     """
     The AI's proposal returned to the operator for confirmation.
@@ -154,7 +162,7 @@ class IntakeResponse(BaseModel):
     """
     intake_id: int
     is_repeat_caller: bool = False
-    existing_ticket_numbers: list[str] = Field(default_factory=list)
+    potential_duplicates: list[DuplicateInfo] = Field(default_factory=list)
     fault_type_proposal: str = Field(..., examples=["login/access"])
     severity_proposal: str = Field(..., examples=["high"])
     candidates: list[CandidateApp] = Field(default_factory=list)
@@ -212,6 +220,7 @@ class TicketResponse(BaseModel):
     status: str
     fault_type: str
     severity: str
+    assignee_id: Optional[str] = None
     dependencies: List[dict] = Field(default_factory=list)
     created_at: Optional[datetime] = None
 
@@ -243,7 +252,7 @@ class TicketListResponse(BaseModel):
 
 class TicketUpdateRequest(BaseModel):
     """
-    Used to update ticket status.
+    Used to update ticket status and optionally assign it.
     R-18/R-19: Moving to 'closed' REQUIRES notes to be filled in.
     """
     new_status: str = Field(..., examples=["resolved"])
@@ -252,6 +261,7 @@ class TicketUpdateRequest(BaseModel):
         description="Required when closing a ticket (R-19). Describes the resolution action.",
     )
     changed_by: str = Field(default="system", examples=["OP-001"])
+    assignee_id: Optional[str] = Field(default=None, examples=["12345P"], description="Service number of the operator taking ownership")
 
 
 class TicketUpdateResponse(BaseModel):
@@ -270,10 +280,55 @@ class TicketHistoryResponse(BaseModel):
     """A single audit trail entry for a ticket."""
     id: int
     ticket_number: str
-    changed_by: str
-    old_status: str
-    new_status: str
-    notes: str = ""
+    changed_by: Optional[str] = None
+    old_status: Optional[str] = None
+    new_status: Optional[str] = None
+    notes: Optional[str] = None
     changed_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+# =====================================================================
+# R-23: SIMILAR RESOLUTION SCHEMA
+# =====================================================================
+
+class SimilarResolution(BaseModel):
+    """A past resolution note that is semantically similar to the current ticket."""
+    ticket_number: str
+    notes: str
+    changed_by: Optional[str] = None
+    changed_at: Optional[datetime] = None
+    similarity_score: float
+
+
+# =====================================================================
+# R-14a: MULTI-TICKET CONFIRM SCHEMAS
+# =====================================================================
+
+class TicketConfirmItem(BaseModel):
+    """
+    A single ticket to create within a multi-fault intake confirmation.
+    """
+    confirmed_app_id: int = Field(..., description="The app confirmed as primary for this sub-ticket")
+    related_app_ids: list[int] = Field(default_factory=list)
+    confirmed_fault_type: str = Field(..., examples=["login/access"])
+    confirmed_severity: str = Field(..., examples=["high"])
+    operator_notes: str = Field(default="")
+    predicted_app_id: Optional[int] = None
+    predicted_fault_type: Optional[str] = None
+    predicted_severity: Optional[str] = None
+
+
+class MultiTicketConfirmRequest(BaseModel):
+    """
+    R-14a: One intake can produce multiple tickets for separate faults.
+    """
+    intake_id: int
+    tickets: list[TicketConfirmItem] = Field(..., min_length=1)
+
+
+class MultiTicketConfirmResponse(BaseModel):
+    """Returned after multi-ticket creation."""
+    created_tickets: list[TicketConfirmResponse]
+    message: str

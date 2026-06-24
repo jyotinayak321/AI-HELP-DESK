@@ -98,6 +98,7 @@ class Ticket(SQLModel, table=True):
     complainant_rank       : Optional[str] = Field(default=None, max_length=50)
     complainant_unit       : Optional[str] = Field(default=None, max_length=100)
     created_at             : Optional[datetime] = Field(default_factory=datetime.utcnow)
+    assignee_id            : Optional[str] = Field(default=None, max_length=100)
 
 # TABLE 7: ticket_related_apps
 class TicketRelatedApp(SQLModel, table=True):
@@ -117,6 +118,10 @@ class LearningExample(SQLModel, table=True):
                        )
     predicted_app_id : Optional[int] = Field(default=None, foreign_key="applications.id")
     confirmed_app_id : Optional[int] = Field(default=None, foreign_key="applications.id")
+    predicted_fault_type : Optional[str] = Field(default=None, max_length=50)
+    confirmed_fault_type : Optional[str] = Field(default=None, max_length=50)
+    predicted_severity   : Optional[str] = Field(default=None, max_length=20)
+    confirmed_severity   : Optional[str] = Field(default=None, max_length=20)
 
 # TABLE 9: ticket_history
 class TicketHistory(SQLModel, table=True):
@@ -128,3 +133,15 @@ class TicketHistory(SQLModel, table=True):
     new_status    : Optional[str] = Field(default=None, max_length=20)
     notes         : Optional[str] = None
     changed_at    : Optional[datetime] = Field(default_factory=datetime.utcnow)
+    resolution_embedding : Optional[List[float]] = Field(
+                               default=None,
+                               sa_column=Column(Vector(768))
+                           )
+
+# TABLE 10: classification_config
+class ClassificationConfig(SQLModel, table=True):
+    __tablename__ = "classification_config"
+    id          : Optional[int] = Field(default=None, primary_key=True)
+    category    : str = Field(max_length=20)  # "fault_type" or "severity"
+    label       : str = Field(max_length=50)  # e.g. "login/access", "critical"
+    description : str  # The descriptive sentence for the zero-shot model

@@ -1,0 +1,265 @@
+{
+    "applications": [
+        {
+            "id": 1,
+            "name": "AFNET Portal",
+            "description": "Air Force intranet and communication portal",
+            "owning_team": "IT-HQ-Delhi",
+            "contact": "afnet@iaf.in"
+        },
+        {
+            "id": 2,
+            "name": "HRMS IAF",
+            "description": "Human resource management for IAF personnel records and postings",
+            "owning_team": "HR-Directorate",
+            "contact": "hrms@iaf.in"
+        },
+        {
+            "id": 3,
+            "name": "Leave Management System",
+            "description": "Online leave application and approval system for IAF personnel",
+            "owning_team": "HR-Directorate",
+            "contact": "leave@iaf.in"
+        },
+        {
+            "id": 4,
+            "name": "Travel Concession System",
+            "description": "LTC and travel concession claims for IAF personnel and families",
+            "owning_team": "Finance-Directorate",
+            "contact": "travel@iaf.in"
+        },
+        {
+            "id": 5,
+            "name": "SSO Gateway",
+            "description": "Single sign-on authentication gateway for all IAF applications",
+            "owning_team": "IT-Security",
+            "contact": "sso@iaf.in"
+        },
+        {
+            "id": 6,
+            "name": "Pay and Allowances Portal",
+            "description": "Salary slip, arrears and allowance management for IAF personnel",
+            "owning_team": "Accounts-Directorate",
+            "contact": "pay@iaf.in"
+        },
+        {
+            "id": 7,
+            "name": "Medical Records System",
+            "description": "IAF personnel medical history and fitness category records",
+            "owning_team": "Medical-Directorate",
+            "contact": "medical@iaf.in"
+        },
+        {
+            "id": 8,
+            "name": "Training Management System",
+            "description": "Course nominations, training records and promotion exam results",
+            "owning_team": "Training-Directorate",
+            "contact": "training@iaf.in"
+        }
+    ],
+    "application_purposes": [],
+    "application_symptoms": [
+        {
+            "application_id": 1,
+            "symptom_text": "AFNET portal not loading on station computer"
+        },
+        {
+            "application_id": 1,
+            "symptom_text": "Unable to access intranet from unit terminal"
+        },
+        {
+            "application_id": 1,
+            "symptom_text": "AFNET login page giving error after password entry"
+        },
+        {
+            "application_id": 2,
+            "symptom_text": "Service record not updating after promotion"
+        },
+        {
+            "application_id": 2,
+            "symptom_text": "Posting order not reflecting in HRMS"
+        },
+        {
+            "application_id": 2,
+            "symptom_text": "Personal details showing wrong unit in system"
+        },
+        {
+            "application_id": 3,
+            "symptom_text": "Leave application submitted but not showing to CO"
+        },
+        {
+            "application_id": 3,
+            "symptom_text": "Annual leave balance incorrect in system"
+        },
+        {
+            "application_id": 3,
+            "symptom_text": "Casual leave not getting approved online"
+        },
+        {
+            "application_id": 4,
+            "symptom_text": "LTC claim submitted but status not updating"
+        },
+        {
+            "application_id": 4,
+            "symptom_text": "Travel advance request not processing"
+        },
+        {
+            "application_id": 4,
+            "symptom_text": "Family travel concession form not available"
+        },
+        {
+            "application_id": 5,
+            "symptom_text": "Getting logged out automatically from all applications"
+        },
+        {
+            "application_id": 5,
+            "symptom_text": "SSO password reset not working"
+        },
+        {
+            "application_id": 5,
+            "symptom_text": "Two factor authentication OTP not receiving"
+        },
+        {
+            "application_id": 6,
+            "symptom_text": "Salary slip not generated for current month"
+        },
+        {
+            "application_id": 6,
+            "symptom_text": "DA arrears not reflecting in pay portal"
+        },
+        {
+            "application_id": 6,
+            "symptom_text": "Wrong rank pay showing in salary statement"
+        },
+        {
+            "application_id": 7,
+            "symptom_text": "Medical fitness category not updated after review"
+        },
+        {
+            "application_id": 7,
+            "symptom_text": "AFB 1771 medical form not accessible online"
+        },
+        {
+            "application_id": 8,
+            "symptom_text": "Course nomination not appearing in training portal"
+        },
+        {
+            "application_id": 8,
+            "symptom_text": "Promotion exam result not visible in system"
+        }
+    ],
+    "application_dependencies": [
+        {
+            "source_app_id": 2,
+            "dependent_app_id": 5,
+            "dependency_nature": "login/access"
+        },
+        {
+            "source_app_id": 3,
+            "dependent_app_id": 5,
+            "dependency_nature": "login/access"
+        },
+        {
+            "source_app_id": 4,
+            "dependent_app_id": 5,
+            "dependency_nature": "login/access"
+        },
+        {
+            "source_app_id": 6,
+            "dependent_app_id": 5,
+            "dependency_nature": "login/access"
+        },
+        {
+            "source_app_id": 7,
+            "dependent_app_id": 5,
+            "dependency_nature": "login/access"
+        },
+        {
+            "source_app_id": 8,
+            "dependent_app_id": 5,
+            "dependency_nature": "login/access"
+        },
+        {
+            "source_app_id": 3,
+            "dependent_app_id": 2,
+            "dependency_nature": "data error"
+        },
+        {
+            "source_app_id": 4,
+            "dependent_app_id": 2,
+            "dependency_nature": "data error"
+        },
+        {
+            "source_app_id": 6,
+            "dependent_app_id": 2,
+            "dependency_nature": "data error"
+        },
+        {
+            "source_app_id": 7,
+            "dependent_app_id": 2,
+            "dependency_nature": "data error"
+        },
+        {
+            "source_app_id": 8,
+            "dependent_app_id": 2,
+            "dependency_nature": "data error"
+        }
+    ],
+    "classification_configs": [
+        {
+            "category": "fault_type",
+            "label": "login/access",
+            "description": "The user is unable to log in, authenticate, or access their account."
+        },
+        {
+            "category": "fault_type",
+            "label": "performance/slow",
+            "description": "The application is running very slowly, timing out, or lagging."
+        },
+        {
+            "category": "fault_type",
+            "label": "data error",
+            "description": "There is an error with the data, incorrect information, or a synchronization issue."
+        },
+        {
+            "category": "fault_type",
+            "label": "total outage",
+            "description": "The entire application is completely down and unreachable for everyone."
+        },
+        {
+            "category": "fault_type",
+            "label": "partial/degraded",
+            "description": "Some features of the application are broken, but it is partially working."
+        },
+        {
+            "category": "fault_type",
+            "label": "cosmetic/UI",
+            "description": "There is a visual issue, spelling mistake, or the user interface looks wrong."
+        },
+        {
+            "category": "fault_type",
+            "label": "other",
+            "description": "The issue does not fit any specific category."
+        },
+        {
+            "category": "severity",
+            "label": "critical",
+            "description": "This is a critical emergency affecting the entire base or mission-critical systems."
+        },
+        {
+            "category": "severity",
+            "label": "high",
+            "description": "This is a high priority issue affecting many users or an important workflow."
+        },
+        {
+            "category": "severity",
+            "label": "normal",
+            "description": "This is a normal, routine helpdesk request affecting a single user."
+        },
+        {
+            "category": "severity",
+            "label": "low",
+            "description": "This is a low priority request, such as a minor question or cosmetic issue."
+        }
+    ]
+}

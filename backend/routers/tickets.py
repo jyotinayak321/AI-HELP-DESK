@@ -15,7 +15,8 @@ Requirement coverage: R-5, R-6, R-7, R-9, R-10, R-13, R-14, R-15,
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select, col, func, text
-from datetime import datetime, timedelta, timezone
+import datetime as dt_lib
+from datetime import timedelta, timezone
 from typing import Optional
 
 from database import get_session
@@ -31,13 +32,19 @@ from schemas import (
     IntakeRequest,
     IntakeResponse,
     CandidateApp,
+    DuplicateInfo,
     TicketConfirmRequest,
     TicketConfirmResponse,
+    TicketConfirmItem,
+    MultiTicketConfirmRequest,
+    MultiTicketConfirmResponse,
     TicketResponse,
     TicketListResponse,
     TicketUpdateRequest,
     TicketUpdateResponse,
+    TicketHistoryResponse,
     MassOutageAlert,
+    SimilarResolution,
     VALID_FAULT_TYPES,
     VALID_SEVERITIES,
     VALID_STATUSES,
@@ -66,7 +73,7 @@ def _generate_ticket_number(session: Session) -> str:
     Generates the next sequential ticket number in the format TIC-YYYYMM-XXXX.
     Queries the DB to find the highest existing number for the current month.
     """
-    now = datetime.now(timezone.utc)
+    now = dt_lib.datetime.now(timezone.utc)
     prefix = f"TIC-{now.strftime('%Y%m')}-"
 
     # Find the highest ticket number for this month
@@ -122,29 +129,60 @@ def create_intake(
     session.refresh(intake)
 
     # -----------------------------------------------------------------
-    # 1b. REPEAT CALLER CHECK (R-20a)
-    # Query tickets table for any open/assigned/in_progress tickets
-    # with the same service number.
-    # -----------------------------------------------------------------
-    repeat_statement = select(Ticket).where(
-        Ticket.complainant_service_no == request.complainant_service_no,
-        col(Ticket.status).in_(["open", "assigned", "in_progress"]),
-    )
-    existing_tickets = session.exec(repeat_statement).all()
-
-    is_repeat = len(existing_tickets) > 0
-    existing_ticket_numbers = [t.ticket_number for t in existing_tickets]
-
-    # -----------------------------------------------------------------
-    # 1c. AI PIPELINE — Call Team B's functions
+    # 1b. AI PIPELINE — Call Team B's functions
     # -----------------------------------------------------------------
 
     # Step 1: Generate embedding vector from complaint text
     embedding = embedder.get_embedding(request.raw_text)
 
-    # Step 2: Classify fault type and severity
-    fault_type = classifier.classify_fault_type(request.raw_text)
-    severity = classifier.classify_severity(request.raw_text)
+    # -----------------------------------------------------------------
+    # 1c. SEMANTIC DUPLICATE & MASS OUTAGE CHECK
+    # -----------------------------------------------------------------
+    embedding_str = "[" + ",".join(map(str, embedding)) + "]"
+    
+    # Only look at tickets created in the last 4 hours to prevent stale alerts
+    time_limit = dt_lib.datetime.now(timezone.utc) - timedelta(hours=4)
+    
+    duplicate_query = text("""
+        SELECT t.ticket_number, t.complainant_service_no, l.raw_text, t.status, (l.text_embedding <=> :embedding) AS distance
+        FROM tickets t
+        JOIN learning_examples l ON t.ticket_number = l.ticket_number
+        WHERE t.status != 'resolved' 
+          AND t.created_at >= :time_limit
+          AND (l.text_embedding <=> :embedding) < 0.20
+        ORDER BY distance ASC
+        LIMIT 5
+    """)
+    dupes = session.execute(duplicate_query, {
+        "embedding": embedding_str, 
+        "time_limit": time_limit
+    }).fetchall()
+    
+    potential_duplicates = []
+    is_repeat = False
+    
+    for row in dupes:
+        is_same = (row.complainant_service_no == request.complainant_service_no)
+        dist = float(row.distance)
+        
+        # Dual thresholds: Looser for same user (0.20) to catch repeat complaints,
+        # Tighter for different user (0.10) to prevent false-positive mass outages.
+        if is_same and dist < 0.20:
+            is_repeat = True
+            
+        if (is_same and dist < 0.20) or (not is_same and dist < 0.10):
+            snippet = row.raw_text[:80] + "..." if len(row.raw_text) > 80 else row.raw_text
+            potential_duplicates.append({
+                "ticket_number": row.ticket_number,
+                "complainant_service_no": row.complainant_service_no,
+                "text_snippet": snippet,
+                "status": row.status,
+                "is_same_user": is_same
+            })
+
+    # Step 2: Classify fault type and severity using Hybrid Strategy
+    fault_type = classifier.classify_fault_type(session, request.raw_text, embedding)
+    severity = classifier.classify_severity(session, request.raw_text, embedding)
 
     # Step 3: Find candidate applications via vector similarity search
     raw_candidates = search_engine.search_candidates(session, embedding)
@@ -210,7 +248,7 @@ def create_intake(
     return IntakeResponse(
         intake_id=intake.id,
         is_repeat_caller=is_repeat,
-        existing_ticket_numbers=existing_ticket_numbers,
+        potential_duplicates=potential_duplicates,
         fault_type_proposal=fault_type,
         severity_proposal=severity,
         candidates=candidates,
@@ -304,6 +342,10 @@ def confirm_ticket(
         text_embedding=embedding,
         predicted_app_id=request.predicted_app_id,
         confirmed_app_id=request.confirmed_app_id,
+        predicted_fault_type=request.predicted_fault_type,
+        confirmed_fault_type=request.confirmed_fault_type,
+        predicted_severity=request.predicted_severity,
+        confirmed_severity=request.confirmed_severity,
     )
     session.add(learning_entry)
 
@@ -349,7 +391,11 @@ def confirm_ticket(
 def list_tickets(
     status: Optional[str] = Query(None, description="Filter by status"),
     severity: Optional[str] = Query(None, description="Filter by severity"),
-    primary_app_id: Optional[int] = Query(None, description="Filter by primary application"),
+    app_id: Optional[int] = Query(None, description="Filter by primary application"),
+    date_from: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    search: Optional[str] = Query(None, description="Search keyword"),
+    team: Optional[str] = Query(None, description="Filter by owning team name"),
     complainant_service_no: Optional[str] = Query(None, description="Filter by service number"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
@@ -362,16 +408,43 @@ def list_tickets(
     # -----------------------------------------------------------------
     # Build filtered query
     # -----------------------------------------------------------------
+    print(f"DEBUG FILTERS: status={status}, severity={severity}, app_id={app_id}, date_from={date_from}, date_to={date_to}, search={search}")
     statement = select(Ticket)
 
     if status:
         statement = statement.where(Ticket.status == status)
     if severity:
         statement = statement.where(Ticket.severity == severity)
-    if primary_app_id:
-        statement = statement.where(Ticket.primary_application_id == primary_app_id)
+    if app_id:
+        statement = statement.where(Ticket.primary_application_id == app_id)
     if complainant_service_no:
         statement = statement.where(Ticket.complainant_service_no == complainant_service_no)
+
+    # R-16: Filter by owning team (join to applications)
+    if team:
+        team_app_ids = session.exec(
+            select(Application.id).where(col(Application.owning_team).ilike(f"%{team}%"))
+        ).all()
+        statement = statement.where(col(Ticket.primary_application_id).in_(team_app_ids))
+    
+    if date_from:
+        try:
+            df = dt_lib.datetime.strptime(date_from, "%Y-%m-%d")
+            statement = statement.where(Ticket.created_at >= df)
+        except ValueError:
+            pass
+            
+    if date_to:
+        try:
+            # Add one day to include the whole end date
+            dt_obj = dt_lib.datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+            statement = statement.where(Ticket.created_at < dt_obj)
+        except ValueError:
+            pass
+
+    if search:
+        # Simple search across ticket number, or just basic string match
+        statement = statement.where(col(Ticket.ticket_number).contains(search))
 
     # Get total count before pagination
     count_statement = select(func.count()).select_from(statement.subquery())
@@ -417,15 +490,16 @@ def list_tickets(
         ticket_responses.append(
             TicketResponse(
                 ticket_number=t.ticket_number,
-                complainant_service_no=t.complainant_service_no,
+                complainant_service_no=t.complainant_service_no or "",
                 complainant_rank=t.complainant_rank or "",
                 complainant_unit=t.complainant_unit or "",
                 primary_application_id=t.primary_application_id,
                 primary_application_name=app_name,
                 original_complaint_text=complaint_text,
-                status=t.status,
-                fault_type=t.fault_type,
-                severity=t.severity,
+                status=t.status or "open",
+                fault_type=t.fault_type or "",
+                severity=t.severity or "",
+                assignee_id=t.assignee_id,
                 dependencies=deps,
                 created_at=t.created_at,
             )
@@ -435,7 +509,7 @@ def list_tickets(
     # R-21: MASS-OUTAGE DETECTION
     # Check if any single application has >10 tickets in the last hour.
     # -----------------------------------------------------------------
-    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+    one_hour_ago = dt_lib.datetime.now(timezone.utc) - timedelta(hours=1)
 
     outage_statement = (
         select(
@@ -537,13 +611,26 @@ def update_ticket(
     old_status = ticket.status
 
     # -----------------------------------------------------------------
-    # Update the ticket
+    # R-19: Apply assignee if provided
+    # -----------------------------------------------------------------
+    if request.assignee_id is not None:
+        ticket.assignee_id = request.assignee_id
+
+    # -----------------------------------------------------------------
+    # Update the ticket status
     # -----------------------------------------------------------------
     ticket.status = request.new_status
     session.add(ticket)
 
     # -----------------------------------------------------------------
-    # R-23: Log the status change into ticket_history
+    # R-23: Embed resolution notes when closing/resolving
+    # -----------------------------------------------------------------
+    resolution_embedding = None
+    if request.new_status in ("resolved", "closed") and request.notes.strip():
+        resolution_embedding = embedder.get_embedding(request.notes)
+
+    # -----------------------------------------------------------------
+    # Log the status change into ticket_history
     # -----------------------------------------------------------------
     history_entry = TicketHistory(
         ticket_number=ticket_number,
@@ -551,6 +638,7 @@ def update_ticket(
         old_status=old_status,
         new_status=request.new_status,
         notes=request.notes,
+        resolution_embedding=resolution_embedding,
     )
     session.add(history_entry)
 
@@ -561,4 +649,206 @@ def update_ticket(
         old_status=old_status,
         new_status=request.new_status,
         message=f"Ticket {ticket_number} updated: {old_status} → {request.new_status}",
+    )
+
+
+# =====================================================================
+# 5. GET /api/tickets/{tn}/similar-resolutions — R-23
+# =====================================================================
+
+@router.get("/tickets/{ticket_number}/similar-resolutions", response_model=list[SimilarResolution])
+def get_similar_resolutions(
+    ticket_number: str,
+    session: Session = Depends(get_session),
+):
+    """
+    R-23: Complaint-to-Complaint matching.
+    Steps:
+      1. Get the embedding of the CURRENT ticket's complaint.
+      2. Find past COMPLAINTS (in learning_examples) with similar embeddings.
+         These past tickets must already be resolved/closed.
+      3. For each matching past ticket, fetch the resolution note from ticket_history.
+      4. Return those notes — telling Operator B "here's how a similar problem was fixed."
+    """
+    # Step 1: Get the current ticket's complaint embedding
+    le = session.exec(
+        select(LearningExample).where(LearningExample.ticket_number == ticket_number)
+    ).first()
+
+    if not le or le.text_embedding is None:
+        return []
+
+    embedding_str = "[" + ",".join(map(str, le.text_embedding)) + "]"
+
+    # Step 2 & 3:
+    # - Join learning_examples (for complaint similarity) with tickets (to check status)
+    # - and ticket_history (to get resolution notes)
+    # - Only match tickets that are actually resolved/closed (i.e., have a resolution note)
+    # - Exclude the current ticket itself
+    resolution_query = text("""
+        SELECT
+            le_past.ticket_number,
+            th.notes,
+            th.changed_by,
+            th.changed_at,
+            (le_past.text_embedding <=> :embedding) AS distance
+        FROM learning_examples le_past
+        JOIN tickets t ON t.ticket_number = le_past.ticket_number
+        JOIN ticket_history th ON th.ticket_number = le_past.ticket_number
+        WHERE le_past.text_embedding IS NOT NULL
+          AND le_past.ticket_number != :current_tn
+          AND t.status IN ('resolved', 'closed')
+          AND th.notes IS NOT NULL
+          AND th.notes != ''
+          AND th.new_status IN ('resolved', 'closed')
+        ORDER BY distance ASC
+        LIMIT 3
+    """)
+    rows = session.execute(resolution_query, {
+        "embedding": embedding_str,
+        "current_tn": ticket_number
+    }).fetchall()
+
+    # Only return results that are meaningfully similar (distance < 0.12, i.e. >88% match)
+    return [
+        SimilarResolution(
+            ticket_number=row.ticket_number,
+            notes=row.notes,
+            changed_by=row.changed_by,
+            changed_at=row.changed_at,
+            similarity_score=round(max(0.0, 1.0 - float(row.distance)), 3),
+        )
+        for row in rows
+        if float(row.distance) < 0.12
+    ]
+
+
+# =====================================================================
+# 5b. GET /api/tickets/{tn}/history — Audit Trail
+# =====================================================================
+
+@router.get("/tickets/{ticket_number}/history", response_model=list[TicketHistoryResponse])
+def get_ticket_history(
+    ticket_number: str,
+    session: Session = Depends(get_session),
+):
+    """
+    Returns the full chronological audit trail for a ticket.
+    Includes all status changes and resolution notes.
+    """
+    ticket = session.exec(
+        select(Ticket).where(Ticket.ticket_number == ticket_number)
+    ).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail=f"Ticket {ticket_number} not found.")
+
+    history = session.exec(
+        select(TicketHistory)
+        .where(TicketHistory.ticket_number == ticket_number)
+        .order_by(col(TicketHistory.changed_at).asc())
+    ).all()
+
+    return [
+        TicketHistoryResponse(
+            id=h.id,
+            ticket_number=h.ticket_number,
+            changed_by=h.changed_by,
+            old_status=h.old_status,
+            new_status=h.new_status,
+            notes=h.notes,
+            changed_at=h.changed_at,
+        )
+        for h in history
+    ]
+
+
+# =====================================================================
+# 6. POST /api/tickets/confirm-multi — R-14a
+# =====================================================================
+
+@router.post("/tickets/confirm-multi", response_model=MultiTicketConfirmResponse)
+def confirm_multi_ticket(
+    request: MultiTicketConfirmRequest,
+    session: Session = Depends(get_session),
+):
+    """
+    R-14a: Create multiple tickets from a single intake when the operator
+    identifies genuinely separate faults in one complaint.
+    """
+    intake = session.get(Intake, request.intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail=f"Intake {request.intake_id} not found.")
+
+    embedding = embedder.get_embedding(intake.raw_text)
+    created = []
+
+    for item in request.tickets:
+        # Validate
+        if item.confirmed_fault_type not in VALID_FAULT_TYPES:
+            raise HTTPException(status_code=400, detail=f"Invalid fault_type: '{item.confirmed_fault_type}'")
+        if item.confirmed_severity not in VALID_SEVERITIES:
+            raise HTTPException(status_code=400, detail=f"Invalid severity: '{item.confirmed_severity}'")
+
+        app = session.get(Application, item.confirmed_app_id)
+        if not app:
+            raise HTTPException(status_code=404, detail=f"Application {item.confirmed_app_id} not found.")
+
+        ticket_number = _generate_ticket_number(session)
+        ticket = Ticket(
+            ticket_number=ticket_number,
+            intake_id=intake.id,
+            primary_application_id=item.confirmed_app_id,
+            status="open",
+            fault_type=item.confirmed_fault_type,
+            severity=item.confirmed_severity,
+            complainant_service_no=intake.complainant_service_no,
+            complainant_rank=intake.complainant_rank,
+            complainant_unit=intake.complainant_unit,
+        )
+        session.add(ticket)
+        session.flush()
+
+        for related_id in item.related_app_ids:
+            if related_id != item.confirmed_app_id:
+                rel_app = session.get(Application, related_id)
+                if rel_app:
+                    session.add(TicketRelatedApp(ticket_number=ticket_number, related_application_id=related_id))
+
+        learning_entry = LearningExample(
+            ticket_number=ticket_number,
+            raw_text=intake.raw_text,
+            text_embedding=embedding,
+            predicted_app_id=item.predicted_app_id,
+            confirmed_app_id=item.confirmed_app_id,
+            predicted_fault_type=item.predicted_fault_type,
+            confirmed_fault_type=item.confirmed_fault_type,
+            predicted_severity=item.predicted_severity,
+            confirmed_severity=item.confirmed_severity,
+        )
+        session.add(learning_entry)
+
+        history = TicketHistory(
+            ticket_number=ticket_number,
+            changed_by="system",
+            old_status="",
+            new_status="open",
+            notes=f"Ticket created (multi-fault). Routed to {app.owning_team}."
+                  + (f" Notes: {item.operator_notes}" if item.operator_notes else ""),
+        )
+        session.add(history)
+
+        created.append(TicketConfirmResponse(
+            ticket_number=ticket_number,
+            status="open",
+            primary_application_name=app.name,
+            fault_type=item.confirmed_fault_type,
+            severity=item.confirmed_severity,
+            routed_to_team=app.owning_team,
+            message=f"Ticket {ticket_number} created.",
+        ))
+
+    session.commit()
+    return MultiTicketConfirmResponse(
+        created_tickets=created,
+        message=f"{len(created)} ticket(s) created from intake {request.intake_id}.",
     )
