@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, PlusCircle, Ticket, Database } from 'lucide-react';
+import { LayoutDashboard, PlusCircle, Ticket, Database, ListTodo } from 'lucide-react';
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/submit',    icon: PlusCircle,       label: 'Submit Complaint' },
   { to: '/tickets',   icon: Ticket,           label: 'Tickets' },
+  { to: '/queue',     icon: ListTodo,         label: 'My Queue' },
   { to: '/registry',  icon: Database,         label: 'App Registry' },
 ];
 

@@ -35,7 +35,7 @@ function Dashboard() {
     setLoading(true); setError(null);
     try {
       const [ticketRes, appRes] = await Promise.all([
-        listTickets({ limit: 10 }),
+        listTickets({ limit: 100 }),
         getAllApps(),
       ]);
       setTickets(ticketRes.data?.tickets ?? ticketRes.data ?? []);

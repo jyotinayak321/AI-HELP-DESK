@@ -262,7 +262,8 @@ CREATE TABLE public.ticket_history (
     old_status character varying(20),
     new_status character varying(20),
     notes text,
-    changed_at timestamp without time zone DEFAULT now()
+    changed_at timestamp without time zone DEFAULT now(),
+    resolution_embedding public.vector(768)
 );
 
 
@@ -317,6 +318,7 @@ CREATE TABLE public.tickets (
     complainant_service_no character varying(20),
     complainant_rank character varying(50),
     complainant_unit character varying(100),
+    assignee_id character varying(100),
     created_at timestamp without time zone DEFAULT now()
 );
 

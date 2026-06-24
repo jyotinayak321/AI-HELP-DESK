@@ -8,6 +8,7 @@ import ClassifyReview from './pages/ClassifyReview';
 import TicketList from './pages/TicketList';
 import TicketDetail from './pages/TicketDetail';
 import Registry from './pages/Registry';
+import TeamQueue from './pages/TeamQueue';
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
               <Route path="/classify" element={<ClassifyReview />} />
               <Route path="/tickets" element={<TicketList />} />
               <Route path="/tickets/:ticketNumber" element={<TicketDetail />} />
+              <Route path="/queue" element={<TeamQueue />} />
               <Route path="/registry" element={<Registry />} />
             </Routes>
           </div>
@@ -33,4 +35,4 @@ function App() {
     </BrowserRouter>
   );
 }
-export default App;
+export default App;
