@@ -57,7 +57,72 @@
             "contact": "training@iaf.in"
         }
     ],
-    "application_purposes": [],
+    "application_purposes": [
+        {
+            "application_id": 1,
+            "purpose_text": "I need to access the military intranet network for official communication."
+        },
+        {
+            "application_id": 1,
+            "purpose_text": "Looking up station-wide announcements and internal documents."
+        },
+        {
+            "application_id": 2,
+            "purpose_text": "I want to update my personnel records, posting preferences, or check my service details."
+        },
+        {
+            "application_id": 2,
+            "purpose_text": "Need to view my current posting order and promotion history."
+        },
+        {
+            "application_id": 3,
+            "purpose_text": "I need to apply for annual leave, casual leave, or sick leave."
+        },
+        {
+            "application_id": 3,
+            "purpose_text": "Checking my remaining holiday balance for this year."
+        },
+        {
+            "application_id": 4,
+            "purpose_text": "I want to claim travel allowance for my recent official duty trip."
+        },
+        {
+            "application_id": 4,
+            "purpose_text": "Applying for LTC (Leave Travel Concession) for my family vacation."
+        },
+        {
+            "application_id": 5,
+            "purpose_text": "Managing my passwords, two-factor authentication, and login credentials."
+        },
+        {
+            "application_id": 5,
+            "purpose_text": "Unlocking my account so I can log into other military applications."
+        },
+        {
+            "application_id": 6,
+            "purpose_text": "I need to download my monthly salary slip or check my DA arrears."
+        },
+        {
+            "application_id": 6,
+            "purpose_text": "Checking if my transport allowance has been credited to my account."
+        },
+        {
+            "application_id": 7,
+            "purpose_text": "I need to update my annual medical fitness category."
+        },
+        {
+            "application_id": 7,
+            "purpose_text": "Viewing the medical board results and AFB 1771 forms."
+        },
+        {
+            "application_id": 8,
+            "purpose_text": "Applying for upcoming professional military training courses."
+        },
+        {
+            "application_id": 8,
+            "purpose_text": "Checking the results of my recent promotion exams."
+        }
+    ],
     "application_symptoms": [
         {
             "application_id": 1,
