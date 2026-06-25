@@ -11,6 +11,7 @@ import TicketDetail from './pages/TicketDetail';
 import Registry from './pages/Registry';
 import TeamQueue from './pages/TeamQueue';
 import LoginPage from './pages/LoginPage';
+import { useCurrentUser } from './useCurrentUser';
 
 /**
  * AUTH_GUARD_ENABLED controls whether the Login page is shown.
@@ -25,6 +26,7 @@ const AUTH_GUARD_ENABLED = true;
 
 function App() {
   const auth = useAuth();
+  const { isOperator, isAdmin } = useCurrentUser();
 
   // ── Auth Guard ──────────────────────────────────────────────────────────────
   // Only block the user if AUTH_GUARD_ENABLED is explicitly turned on.
@@ -62,12 +64,19 @@ function App() {
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/submit" element={<SubmitComplaint />} />
-              <Route path="/classify" element={<ClassifyReview />} />
-              <Route path="/tickets" element={<TicketList />} />
+              {isOperator && (
+                <>
+                  <Route path="/submit" element={<SubmitComplaint />} />
+                  <Route path="/classify" element={<ClassifyReview />} />
+                  <Route path="/tickets" element={<TicketList />} />
+                  <Route path="/registry" element={<Registry />} />
+                </>
+              )}
+              {isAdmin && (
+                <Route path="/queue" element={<TeamQueue />} />
+              )}
               <Route path="/tickets/:ticketNumber" element={<TicketDetail />} />
-              <Route path="/queue" element={<TeamQueue />} />
-              <Route path="/registry" element={<Registry />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </div>
         </div>

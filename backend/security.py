@@ -36,7 +36,7 @@ from models import UserRole
 class CurrentUser(BaseModel):
     service_no: str
     role: str  # "operator" or "admin"
-    managed_application_id: Optional[int] = None
+    managed_team: Optional[str] = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -46,7 +46,7 @@ class CurrentUser(BaseModel):
 DEV_USER = CurrentUser(
     service_no="DEV-00000",
     role="operator",
-    managed_application_id=None,
+    managed_team=None,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -147,6 +147,7 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token is missing 'preferred_username' claim.",
         )
+    service_no = service_no.upper()
 
     # ── Look up user role in PostgreSQL ───────────────────────────────────────
     user_role = session.get(UserRole, service_no)
@@ -160,7 +161,7 @@ def get_current_user(
     return CurrentUser(
         service_no=user_role.service_no,
         role=user_role.role,
-        managed_application_id=user_role.managed_application_id,
+        managed_team=user_role.managed_team,
     )
 
 

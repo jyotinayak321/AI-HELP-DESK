@@ -34,7 +34,7 @@ export function useCurrentUser() {
       } catch (err) {
         console.error('Failed to fetch /api/me:', err);
         // Fallback: treat as a dev operator if backend call fails
-        setUserInfo({ service_no: 'DEV-00000', role: 'operator', managed_application_id: null });
+        setUserInfo({ service_no: 'DEV-00000', role: 'operator', managed_team: null });
       } finally {
         setLoading(false);
       }
@@ -50,7 +50,7 @@ export function useCurrentUser() {
     loading,
     serviceNo: userInfo?.service_no,
     role: userInfo?.role,
-    managedApplicationId: userInfo?.managed_application_id,
+    managedTeam: userInfo?.managed_team,
     isOperator: userInfo?.role === 'operator',
     isAdmin: userInfo?.role === 'admin',
   };

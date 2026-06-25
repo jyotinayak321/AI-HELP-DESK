@@ -1,5 +1,6 @@
 import { useLocation } from 'react-router-dom';
 import { Bell } from 'lucide-react';
+import { useCurrentUser } from '../../useCurrentUser';
 
 const PAGE_TITLES = {
   '/dashboard': 'Dashboard',
@@ -11,6 +12,9 @@ const PAGE_TITLES = {
 
 function Topbar() {
   const { pathname } = useLocation();
+  const { serviceNo, role } = useCurrentUser();
+  const avatarText = role === 'admin' ? 'AD' : 'OP';
+
   return (
     <div style={{
       height: '52px', background: '#fff',
@@ -29,7 +33,7 @@ function Topbar() {
           background: '#185FA5', color: '#fff',
           display: 'flex', alignItems: 'center',
           justifyContent: 'center', fontSize: '11px', fontWeight: 500,
-        }}>OP</div>
+        }} title={serviceNo}>{avatarText}</div>
       </div>
     </div>
   );

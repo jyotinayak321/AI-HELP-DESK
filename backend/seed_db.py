@@ -1,11 +1,14 @@
 import json
 import os
-from sqlmodel import Session, select
-from database import engine
-from models import Application, ApplicationSymptom, ApplicationPurpose, ApplicationDependency, ClassificationConfig, UserRole
+from sqlmodel import Session, select, SQLModel
+from database import engine, init_db
+from models import Application, ApplicationSymptom, ApplicationPurpose, ApplicationDependency, ClassificationConfig, UserRole, Ticket
 from services.embedder import TextEmbedder
 
 def seed():
+    print("Creating database tables...")
+    init_db()
+    SQLModel.metadata.create_all(engine)
     print("Loading AI Model (E5)... This might take a few seconds.")
     embedder = TextEmbedder()
     

@@ -22,6 +22,7 @@ from schemas import (
     DependencyResponse,
 )
 from services.embedder import TextEmbedder
+from security import require_operator, CurrentUser
 
 router = APIRouter()
 embedder = TextEmbedder()
@@ -44,7 +45,7 @@ def get_one_app(app_id: int, session: Session = Depends(get_session)):
 
 
 @router.post("/applications", response_model=ApplicationResponse, status_code=status.HTTP_201_CREATED)
-def create_app(request: ApplicationCreate, session: Session = Depends(get_session)):
+def create_app(request: ApplicationCreate, session: Session = Depends(get_session), current_user: CurrentUser = Depends(require_operator)):
     existing = session.exec(select(Application).where(Application.name == request.name)).first()
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Exists")
@@ -57,7 +58,7 @@ def create_app(request: ApplicationCreate, session: Session = Depends(get_sessio
 
 
 @router.put("/applications/{app_id}", response_model=ApplicationResponse)
-def update_app(app_id: int, request: ApplicationCreate, session: Session = Depends(get_session)):
+def update_app(app_id: int, request: ApplicationCreate, session: Session = Depends(get_session), current_user: CurrentUser = Depends(require_operator)):
     app = session.get(Application, app_id)
     if not app:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
@@ -71,14 +72,13 @@ def update_app(app_id: int, request: ApplicationCreate, session: Session = Depen
     return app
 
 
-@router.delete("/applications/{app_id}", status_code=status.HTTP_200_OK)
-def delete_app(app_id: int, session: Session = Depends(get_session)):
+@router.delete("/applications/{app_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_app(app_id: int, session: Session = Depends(get_session), current_user: CurrentUser = Depends(require_operator)):
     app = session.get(Application, app_id)
     if not app:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
     session.delete(app)
     session.commit()
-    return {"message": "Deleted"}
 
 
 # =====================================================================
@@ -86,7 +86,7 @@ def delete_app(app_id: int, session: Session = Depends(get_session)):
 # =====================================================================
 
 @router.post("/applications/{app_id}/purposes", status_code=status.HTTP_201_CREATED)
-def add_purpose(app_id: int, request: PurposeCreate, session: Session = Depends(get_session)):
+def add_purpose(app_id: int, request: PurposeCreate, session: Session = Depends(get_session), current_user: CurrentUser = Depends(require_operator)):
     app = session.get(Application, app_id)
     if not app:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
@@ -102,7 +102,7 @@ def add_purpose(app_id: int, request: PurposeCreate, session: Session = Depends(
 
 
 @router.post("/applications/{app_id}/symptoms", status_code=status.HTTP_201_CREATED)
-def add_symptom(app_id: int, request: SymptomCreate, session: Session = Depends(get_session)):
+def add_symptom(app_id: int, request: SymptomCreate, session: Session = Depends(get_session), current_user: CurrentUser = Depends(require_operator)):
     app = session.get(Application, app_id)
     if not app:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
@@ -127,7 +127,7 @@ def get_all_deps(session: Session = Depends(get_session)):
 
 
 @router.post("/dependencies", response_model=DependencyResponse, status_code=status.HTTP_201_CREATED)
-def create_dependency(request: DependencyCreate, session: Session = Depends(get_session)):
+def create_dependency(request: DependencyCreate, session: Session = Depends(get_session), current_user: CurrentUser = Depends(require_operator)):
     if request.source_app_id == request.dependent_app_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Same app")
     
@@ -142,14 +142,13 @@ def create_dependency(request: DependencyCreate, session: Session = Depends(get_
     return dep
 
 
-@router.delete("/dependencies/{dep_id}", status_code=status.HTTP_200_OK)
-def delete_dependency(dep_id: int, session: Session = Depends(get_session)):
+@router.delete("/dependencies/{dep_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_dependency(dep_id: int, session: Session = Depends(get_session), current_user: CurrentUser = Depends(require_operator)):
     dep = session.get(ApplicationDependency, dep_id)
     if not dep:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
     session.delete(dep)
     session.commit()
-    return {"message": "Deleted"}
 
 
 # =====================================================================

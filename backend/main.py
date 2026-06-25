@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from routers.admin import router as admin_router
 from routers.tickets import router as tickets_router
-from security import get_current_user, CurrentUser
+from security import get_current_user, CurrentUser, require_operator
 
 app = FastAPI(
     title="AI Help Desk",
@@ -36,5 +36,5 @@ def get_me(user: CurrentUser = Depends(get_current_user)):
     return {
         "service_no": user.service_no,
         "role": user.role,
-        "managed_application_id": user.managed_application_id,
+        "managed_team": user.managed_team,
     }

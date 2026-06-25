@@ -331,52 +331,52 @@
         {
             "service_no": "OP-10001",
             "role": "operator",
-            "managed_application_id": null
+            "managed_team": null
         },
         {
             "service_no": "OP-10002",
             "role": "operator",
-            "managed_application_id": null
+            "managed_team": null
         },
         {
             "service_no": "OP-10003",
             "role": "operator",
-            "managed_application_id": null
+            "managed_team": null
         },
         {
             "service_no": "ADM-20001",
             "role": "admin",
-            "managed_application_id": 1
+            "managed_team": "IT-HQ-Delhi"
         },
         {
             "service_no": "ADM-20002",
             "role": "admin",
-            "managed_application_id": 2
+            "managed_team": "HR-Directorate"
         },
         {
             "service_no": "ADM-20003",
             "role": "admin",
-            "managed_application_id": 3
+            "managed_team": "HR-Directorate"
         },
         {
             "service_no": "ADM-20004",
             "role": "admin",
-            "managed_application_id": 4
+            "managed_team": "Finance-Directorate"
         },
         {
             "service_no": "ADM-20005",
             "role": "admin",
-            "managed_application_id": 5
+            "managed_team": "IT-Security"
         },
         {
             "service_no": "ADM-20006",
             "role": "admin",
-            "managed_application_id": 6
+            "managed_team": "Finance-Directorate"
         },
         {
             "service_no": "ADM-20007",
             "role": "admin",
-            "managed_application_id": 7
+            "managed_team": "Medical-Directorate"
         }
     ]
 }

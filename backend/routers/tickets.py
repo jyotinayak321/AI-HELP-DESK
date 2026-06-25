@@ -20,6 +20,7 @@ from datetime import timedelta, timezone
 from typing import Optional
 
 from database import get_session
+from security import CurrentUser, get_current_user, require_operator, require_admin
 from models import (
     Application,
     Intake,
@@ -106,6 +107,7 @@ def _generate_ticket_number(session: Session) -> str:
 def create_intake(
     request: IntakeRequest,
     session: Session = Depends(get_session),
+    current_user: CurrentUser = Depends(require_operator),
 ):
     """
     Step 1 of the ticket creation flow.
@@ -118,7 +120,7 @@ def create_intake(
     # -----------------------------------------------------------------
     intake = Intake(
         raw_text=request.raw_text,
-        operator_id=request.operator_id,
+        operator_id=current_user.service_no,
         complainant_service_no=request.complainant_service_no,
         complainant_name=request.complainant_name,
         complainant_unit=request.complainant_unit,
@@ -265,6 +267,7 @@ def create_intake(
 def confirm_ticket(
     request: TicketConfirmRequest,
     session: Session = Depends(get_session),
+    current_user: CurrentUser = Depends(require_operator),
 ):
     """
     Step 2 of the ticket creation flow.
@@ -314,6 +317,8 @@ def confirm_ticket(
         complainant_service_no=intake.complainant_service_no,
         complainant_rank=intake.complainant_rank,
         complainant_unit=intake.complainant_unit,
+        assignee_id=None,
+        created_by_service_no=current_user.service_no,
     )
     session.add(ticket)
     session.flush()  # Force INSERT into tickets table so foreign keys pass
@@ -400,6 +405,7 @@ def list_tickets(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     session: Session = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     Returns a filtered list of tickets plus any mass-outage alerts.
@@ -410,6 +416,11 @@ def list_tickets(
     # -----------------------------------------------------------------
     print(f"DEBUG FILTERS: status={status}, severity={severity}, app_id={app_id}, date_from={date_from}, date_to={date_to}, search={search}")
     statement = select(Ticket)
+
+    # RBAC Enforcement: Admins only see their managed application
+    if current_user.role == "admin" and current_user.managed_team:
+        statement = statement.join(Application, Ticket.primary_application_id == Application.id)
+        statement = statement.where(Application.owning_team == current_user.managed_team)
 
     if status:
         statement = statement.where(Ticket.status == status)
@@ -516,6 +527,15 @@ def list_tickets(
             Ticket.primary_application_id,
             func.count(Ticket.ticket_number).label("ticket_count"),
         )
+    )
+
+    # Apply RBAC to mass outage detection as well
+    if current_user.role == "admin" and current_user.managed_team:
+        outage_statement = outage_statement.join(Application, Ticket.primary_application_id == Application.id)
+        outage_statement = outage_statement.where(Application.owning_team == current_user.managed_team)
+
+    outage_statement = (
+        outage_statement
         .where(
             Ticket.created_at >= one_hour_ago,
             col(Ticket.status).in_(["open", "assigned", "in_progress"]),
@@ -524,6 +544,7 @@ def list_tickets(
         .group_by(Ticket.primary_application_id)
         .having(func.count(Ticket.ticket_number) > 10)
     )
+    
     outage_results = session.exec(outage_statement).all()
 
     mass_outage_alerts = []
@@ -562,6 +583,7 @@ def update_ticket(
     ticket_number: str,
     request: TicketUpdateRequest,
     session: Session = Depends(get_session),
+    current_user: CurrentUser = Depends(require_admin),
 ):
     """
     Updates a ticket's status. Enforces business rules:
@@ -770,6 +792,7 @@ def get_ticket_history(
 def confirm_multi_ticket(
     request: MultiTicketConfirmRequest,
     session: Session = Depends(get_session),
+    current_user: CurrentUser = Depends(require_operator),
 ):
     """
     R-14a: Create multiple tickets from a single intake when the operator
@@ -804,6 +827,8 @@ def confirm_multi_ticket(
             complainant_service_no=intake.complainant_service_no,
             complainant_rank=intake.complainant_rank,
             complainant_unit=intake.complainant_unit,
+            assignee_id=None,
+            created_by_service_no=current_user.service_no,
         )
         session.add(ticket)
         session.flush()

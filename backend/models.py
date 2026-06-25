@@ -89,7 +89,7 @@ class UserRole(SQLModel, table=True):
     __tablename__ = "user_roles"
     service_no: str = Field(primary_key=True)
     role: str = Field(default="operator")
-    managed_application_id: Optional[int] = Field(default=None, foreign_key="applications.id")
+    managed_team: Optional[str] = Field(default=None, max_length=100)
 
 class Ticket(SQLModel, table=True):
     __tablename__ = "tickets"

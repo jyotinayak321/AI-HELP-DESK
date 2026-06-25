@@ -6,6 +6,7 @@ import Badge from '../components/ui/Badge';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import ErrorMessage from '../components/ui/ErrorMessage';
 import toast from 'react-hot-toast';
+import { useCurrentUser } from '../useCurrentUser';
 
 // ─── helper ──────────────────────────────────────────────────────────────────
 function fmtDate(raw) {
@@ -126,6 +127,7 @@ function TicketDetail() {
   const { ticketNumber } = useParams();
   const navigate = useNavigate();
   const { state } = useLocation();
+  const { isAdmin } = useCurrentUser();
 
   const [ticket,      setTicket]      = useState(null);
   const [resolutions, setResolutions] = useState([]);
@@ -277,96 +279,98 @@ function TicketDetail() {
       }
 
       {/* ── Update panel ─────────────────────────────────────────────── */}
-      <div style={card}>
-        <div style={cardTitle}>Update Ticket</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {isAdmin && (
+        <div style={card}>
+          <div style={cardTitle}>Update Ticket</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-          <div>
-            <label style={labelStyle}>Status</label>
-            <select
-              value={update.new_status}
-              onChange={e => setUpdate(p => ({ ...p, new_status: e.target.value }))}
-              style={selectStyle}
-              disabled={isClosed}
-            >
-              {TICKET_STATUSES.map(s => (
-                <option key={s.value} value={s.value}>{s.label}</option>
-              ))}
-            </select>
-            {isClosed && (
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-                This ticket is closed. Status can no longer be changed.
-              </div>
+            <div>
+              <label style={labelStyle}>Status</label>
+              <select
+                value={update.new_status}
+                onChange={e => setUpdate(p => ({ ...p, new_status: e.target.value }))}
+                style={selectStyle}
+                disabled={isClosed}
+              >
+                {TICKET_STATUSES.map(s => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+              {isClosed && (
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                  This ticket is closed. Status can no longer be changed.
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label style={labelStyle}>
+                Assign To <span style={{ color: '#94a3b8' }}>(service no. or name)</span>
+              </label>
+              <input
+                value={update.assignee_id}
+                onChange={e => setUpdate(p => ({ ...p, assignee_id: e.target.value }))}
+                placeholder="e.g. 12345P or Cpl. Kumar"
+                style={selectStyle}
+                disabled={isClosed}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Changed By</label>
+              <input
+                value={update.changed_by}
+                onChange={e => setUpdate(p => ({ ...p, changed_by: e.target.value }))}
+                placeholder="Operator ID or name"
+                style={selectStyle}
+                disabled={isClosed}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>
+                Notes{' '}
+                {update.new_status === 'closed' && (
+                  <span style={{ color: '#e24b4a' }}>* required for closing</span>
+                )}
+                {CLOSED_STATUSES.includes(update.new_status) && update.new_status !== 'closed' && (
+                  <span style={{ color: '#059669' }}> (will be saved as resolution note)</span>
+                )}
+              </label>
+              <textarea
+                value={update.notes}
+                onChange={e => setUpdate(p => ({ ...p, notes: e.target.value }))}
+                placeholder={
+                  isClosed
+                    ? 'Ticket is already closed.'
+                    : CLOSED_STATUSES.includes(update.new_status)
+                      ? 'Describe exactly how you resolved this issue — this note will help future operators!'
+                      : 'Update note, progress, or context...'
+                }
+                rows={3}
+                style={{ ...selectStyle, resize: 'vertical', lineHeight: '1.6' }}
+                disabled={isClosed}
+              />
+            </div>
+
+            {!isClosed && (
+              <button
+                onClick={handleUpdate}
+                disabled={saving || (update.new_status === 'closed' && !update.notes.trim())}
+                style={{
+                  background: '#185FA5', color: '#fff', border: 'none',
+                  borderRadius: '8px', padding: '10px 20px',
+                  fontSize: '13px', fontWeight: 500, cursor: 'pointer',
+                  opacity: (saving || (update.new_status === 'closed' && !update.notes.trim())) ? 0.6 : 1,
+                }}
+              >
+                {saving ? 'Saving...' : 'Update Ticket'}
+              </button>
             )}
+
           </div>
-
-          <div>
-            <label style={labelStyle}>
-              Assign To <span style={{ color: '#94a3b8' }}>(service no. or name)</span>
-            </label>
-            <input
-              value={update.assignee_id}
-              onChange={e => setUpdate(p => ({ ...p, assignee_id: e.target.value }))}
-              placeholder="e.g. 12345P or Cpl. Kumar"
-              style={selectStyle}
-              disabled={isClosed}
-            />
-          </div>
-
-          <div>
-            <label style={labelStyle}>Changed By</label>
-            <input
-              value={update.changed_by}
-              onChange={e => setUpdate(p => ({ ...p, changed_by: e.target.value }))}
-              placeholder="Operator ID or name"
-              style={selectStyle}
-              disabled={isClosed}
-            />
-          </div>
-
-          <div>
-            <label style={labelStyle}>
-              Notes{' '}
-              {update.new_status === 'closed' && (
-                <span style={{ color: '#e24b4a' }}>* required for closing</span>
-              )}
-              {CLOSED_STATUSES.includes(update.new_status) && update.new_status !== 'closed' && (
-                <span style={{ color: '#059669' }}> (will be saved as resolution note)</span>
-              )}
-            </label>
-            <textarea
-              value={update.notes}
-              onChange={e => setUpdate(p => ({ ...p, notes: e.target.value }))}
-              placeholder={
-                isClosed
-                  ? 'Ticket is already closed.'
-                  : CLOSED_STATUSES.includes(update.new_status)
-                    ? 'Describe exactly how you resolved this issue — this note will help future operators!'
-                    : 'Update note, progress, or context...'
-              }
-              rows={3}
-              style={{ ...selectStyle, resize: 'vertical', lineHeight: '1.6' }}
-              disabled={isClosed}
-            />
-          </div>
-
-          {!isClosed && (
-            <button
-              onClick={handleUpdate}
-              disabled={saving || (update.new_status === 'closed' && !update.notes.trim())}
-              style={{
-                background: '#185FA5', color: '#fff', border: 'none',
-                borderRadius: '8px', padding: '10px 20px',
-                fontSize: '13px', fontWeight: 500, cursor: 'pointer',
-                opacity: (saving || (update.new_status === 'closed' && !update.notes.trim())) ? 0.6 : 1,
-              }}
-            >
-              {saving ? 'Saving...' : 'Update Ticket'}
-            </button>
-          )}
-
         </div>
-      </div>
+      )}
 
     </div>
   );

@@ -6,6 +6,7 @@ import Badge from '../components/ui/Badge';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import ErrorMessage from '../components/ui/ErrorMessage';
 import { STATUS_COLOR, SEVERITY_COLOR } from '../constants/enums';
+import { useCurrentUser } from '../useCurrentUser';
 
 function detectOutages(tickets) {
   const appCount = {};
@@ -26,6 +27,7 @@ function detectOutages(tickets) {
 }
 
 function Dashboard() {
+  const { role } = useCurrentUser();
   const [tickets,  setTickets]  = useState([]);
   const [appCount, setAppCount] = useState(null);
   const [loading,  setLoading]  = useState(true);
@@ -60,6 +62,16 @@ function Dashboard() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#1e293b', marginBottom: '4px' }}>Dashboard</h2>
+          <div style={{ fontSize: '13px', color: '#64748b' }}>
+            System overview and active operations 
+            {role && <span style={{ marginLeft: '8px', padding: '2px 6px', background: '#e2e8f0', borderRadius: '4px', fontSize: '11px', textTransform: 'uppercase', fontWeight: 600 }}>{role}</span>}
+          </div>
+        </div>
+      </div>
 
       {outages.length > 0 && (
         <div style={{
