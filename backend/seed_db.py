@@ -2,7 +2,7 @@ import json
 import os
 from sqlmodel import Session, select
 from database import engine
-from models import Application, ApplicationSymptom, ApplicationPurpose, ApplicationDependency, ClassificationConfig
+from models import Application, ApplicationSymptom, ApplicationPurpose, ApplicationDependency, ClassificationConfig, UserRole
 from services.embedder import TextEmbedder
 
 def seed():
@@ -85,6 +85,24 @@ def seed():
                 session.add(conf)
         session.commit()
         
+        # 6. Seed User Roles (RBAC)
+        print("Seeding User Roles (RBAC)...")
+        for role_data in data.get("user_roles", []):
+            existing = session.get(UserRole, role_data["service_no"])
+            if not existing:
+                ur = UserRole(**role_data)
+                session.add(ur)
+        session.commit()
+        
+        print("Syncing database sequences...")
+        from sqlalchemy import text
+        try:
+            # Fixes PostgreSQL auto-increment counter desync issue
+            session.exec(text("SELECT setval('applications_id_seq', (SELECT COALESCE(MAX(id), 1) FROM applications))"))
+            session.commit()
+        except Exception as e:
+            print(f"Note: Sequence sync skipped (if not Postgres). Error: {e}")
+            
         print("✅ Database successfully seeded with AI vectors!")
 
 if __name__ == "__main__":

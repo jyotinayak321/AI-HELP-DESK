@@ -85,20 +85,27 @@ class Intake(SQLModel, table=True):
     complainant_rank       : Optional[str] = Field(default=None, max_length=50)
 
 # TABLE 6: tickets
+class UserRole(SQLModel, table=True):
+    __tablename__ = "user_roles"
+    service_no: str = Field(primary_key=True)
+    role: str = Field(default="operator")
+    managed_application_id: Optional[int] = Field(default=None, foreign_key="applications.id")
+
 class Ticket(SQLModel, table=True):
     __tablename__ = "tickets"
-    ticket_number          : str = Field(primary_key=True, max_length=20)
-    intake_id              : Optional[int] = Field(default=None, foreign_key="intakes.id")
-    complainant_id         : Optional[str] = Field(default=None, max_length=50)
-    primary_application_id : Optional[int] = Field(default=None, foreign_key="applications.id")
-    status                 : Optional[str] = Field(default="open", max_length=20)
-    fault_type             : Optional[str] = Field(default=None, max_length=50)
-    severity               : Optional[str] = Field(default="medium", max_length=20)
-    complainant_service_no : Optional[str] = Field(default=None, max_length=20)
-    complainant_rank       : Optional[str] = Field(default=None, max_length=50)
-    complainant_unit       : Optional[str] = Field(default=None, max_length=100)
+    ticket_number          : str            = Field(primary_key=True, max_length=20)
+    intake_id              : Optional[int]  = Field(default=None, foreign_key="intakes.id")
+    complainant_id         : Optional[str]  = Field(default=None, max_length=50)
+    primary_application_id : Optional[int]  = Field(default=None, foreign_key="applications.id")
+    status                 : Optional[str]  = Field(default="open", max_length=20)
+    fault_type             : Optional[str]  = Field(default=None, max_length=50)
+    severity               : Optional[str]  = Field(default="medium", max_length=20)
+    complainant_service_no : Optional[str]  = Field(default=None, max_length=20)
+    complainant_rank       : Optional[str]  = Field(default=None, max_length=50)
+    complainant_unit       : Optional[str]  = Field(default=None, max_length=100)
+    assignee_id            : Optional[str]  = Field(default=None, max_length=100)
     created_at             : Optional[datetime] = Field(default_factory=datetime.utcnow)
-    assignee_id            : Optional[str] = Field(default=None, max_length=100)
+    created_by_service_no  : Optional[str]  = Field(default=None, max_length=20)
 
 # TABLE 7: ticket_related_apps
 class TicketRelatedApp(SQLModel, table=True):

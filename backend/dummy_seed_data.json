@@ -326,5 +326,57 @@
             "label": "low",
             "description": "This is a low priority request, such as a minor question or cosmetic issue."
         }
+    ],
+    "user_roles": [
+        {
+            "service_no": "OP-10001",
+            "role": "operator",
+            "managed_application_id": null
+        },
+        {
+            "service_no": "OP-10002",
+            "role": "operator",
+            "managed_application_id": null
+        },
+        {
+            "service_no": "OP-10003",
+            "role": "operator",
+            "managed_application_id": null
+        },
+        {
+            "service_no": "ADM-20001",
+            "role": "admin",
+            "managed_application_id": 1
+        },
+        {
+            "service_no": "ADM-20002",
+            "role": "admin",
+            "managed_application_id": 2
+        },
+        {
+            "service_no": "ADM-20003",
+            "role": "admin",
+            "managed_application_id": 3
+        },
+        {
+            "service_no": "ADM-20004",
+            "role": "admin",
+            "managed_application_id": 4
+        },
+        {
+            "service_no": "ADM-20005",
+            "role": "admin",
+            "managed_application_id": 5
+        },
+        {
+            "service_no": "ADM-20006",
+            "role": "admin",
+            "managed_application_id": 6
+        },
+        {
+            "service_no": "ADM-20007",
+            "role": "admin",
+            "managed_application_id": 7
+        }
     ]
 }

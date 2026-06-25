@@ -223,11 +223,25 @@ CREATE TABLE public.learning_examples (
     raw_text text NOT NULL,
     text_embedding public.vector(768),
     predicted_app_id integer,
-    confirmed_app_id integer
+    confirmed_app_id integer,
+    predicted_fault_type character varying(50),
+    confirmed_fault_type character varying(50),
+    predicted_severity character varying(20),
+    confirmed_severity character varying(20)
 );
 
 
 ALTER TABLE public.learning_examples OWNER TO postgres;
+
+-- TABLE: classification_config
+CREATE TABLE public.classification_config (
+    id SERIAL PRIMARY KEY,
+    category character varying(20) NOT NULL,
+    label character varying(50) NOT NULL,
+    description text NOT NULL
+);
+
+ALTER TABLE public.classification_config OWNER TO postgres;
 
 --
 -- Name: learning_examples_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
@@ -319,7 +333,8 @@ CREATE TABLE public.tickets (
     complainant_rank character varying(50),
     complainant_unit character varying(100),
     assignee_id character varying(100),
-    created_at timestamp without time zone DEFAULT now()
+    created_at timestamp without time zone DEFAULT now(),
+    created_by_service_no character varying(20)
 );
 
 
@@ -541,3 +556,11 @@ ALTER TABLE ONLY public.tickets
 
 \unrestrict PiQlBptRJBcFxbdFgQaJDKyYNAsM1LgsVV4ADXHpy11lDLHJUOeke35Dl7r6TVc
 
+-- TABLE: user_roles (RBAC - must come after applications table)
+CREATE TABLE IF NOT EXISTS public.user_roles (
+    service_no character varying(50) PRIMARY KEY,
+    role character varying(20) DEFAULT 'operator',
+    managed_application_id integer REFERENCES public.applications(id)
+);
+
+ALTER TABLE public.user_roles OWNER TO postgres;

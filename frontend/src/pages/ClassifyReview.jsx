@@ -110,7 +110,7 @@ function ClassifyReview() {
     setTickets(prev => prev.map((t, i) => i === idx ? updated : t));
   }
   function addTicket() {
-    setTickets(prev => [...prev, { ...defaultTicket(), faultType: 'other', severity: 'medium', notes: '', relatedAppIds: [] }]);
+    setTickets(prev => [...prev, { ...defaultTicket(), faultType: 'other', severity: 'normal', notes: '', relatedAppIds: [] }]);
   }
   function removeTicket(idx) {
     setTickets(prev => prev.filter((_, i) => i !== idx));

@@ -1,7 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from routers.admin import router as admin_router
 from routers.tickets import router as tickets_router
+from security import get_current_user, CurrentUser
 
 app = FastAPI(
     title="AI Help Desk",
@@ -25,3 +26,15 @@ app.include_router(tickets_router, prefix="/api", tags=["Tickets"])
 @app.get("/", tags=["Health"])
 def health_check():
     return {"status": "ok", "version": "1.0.0"}
+
+@app.get("/api/me", tags=["Auth"])
+def get_me(user: CurrentUser = Depends(get_current_user)):
+    """
+    Returns the currently logged-in user's service number and role.
+    The React frontend calls this after login to know the persona.
+    """
+    return {
+        "service_no": user.service_no,
+        "role": user.role,
+        "managed_application_id": user.managed_application_id,
+    }

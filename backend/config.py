@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     TRANSFORMERS_OFFLINE: str = "1"
     HF_HUB_OFFLINE: str = "1"
 
+    # -- Auth (Keycloak) ---------------------
+    # Set to True to enforce JWT tokens on all routes.
+    # Keep False during development if Keycloak is not running.
+    AUTH_ENABLED: bool = True
+    KEYCLOAK_URL: str = "http://localhost:8080"
+    KEYCLOAK_REALM: str = "ai-helpdesk"
+    KEYCLOAK_CLIENT_ID: str = "helpdesk-frontend"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
