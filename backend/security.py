@@ -22,6 +22,7 @@ from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
+# pyrefly: ignore [missing-import]
 from sqlmodel import Session
 from pydantic import BaseModel
 

@@ -31,6 +31,19 @@ class Settings(BaseSettings):
     KEYCLOAK_REALM: str = "ai-helpdesk"
     KEYCLOAK_CLIENT_ID: str = "helpdesk-frontend"
 
+    # -- Phase 2: Voice Layer ----------------
+    # STT (Speech-to-Text) — faster-whisper
+    STT_MODEL_SIZE: str = "medium"
+    STT_DEVICE: str = "auto"          # "auto", "cuda", "cpu"
+    STT_COMPUTE_TYPE: str = "default" # "default", "float16", "int8", "float32"
+
+    # TTS (Text-to-Speech)
+    TTS_BACKEND: str = "auto"          # "piper", "sapi5", "auto"
+
+    # Voice session
+    VOICE_SESSION_TTL: int = 1800      # seconds (30 min default)
+    VOICE_MAX_SVC_RETRIES: int = 3
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

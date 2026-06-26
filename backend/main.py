@@ -2,12 +2,13 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from routers.admin import router as admin_router
 from routers.tickets import router as tickets_router
+from routers.voice import router as voice_router
 from security import get_current_user, CurrentUser, require_operator
 
 app = FastAPI(
     title="AI Help Desk",
-    description="Complaint Classification Phase 1",
-    version="1.0.0",
+    description="Complaint Classification Phase 1 + Voice Layer Phase 2",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -22,6 +23,7 @@ app.add_middleware(
 
 app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
 app.include_router(tickets_router, prefix="/api", tags=["Tickets"])
+app.include_router(voice_router, prefix="/api/voice", tags=["Voice"])
 
 @app.get("/", tags=["Health"])
 def health_check():
