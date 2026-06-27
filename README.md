@@ -122,12 +122,12 @@ backend/
     ├── tickets.py             # R-5 to R-21 - Intake & Ticket Lifecycle
     └── voice.py               # R-30 to R-39 - Voice Layer Endpoints
 ```
-```
+
 ### Database Schema
 
 #### 1. Applications
 Stores all registered applications supported by the help desk.
-
+```
 | Column        | Type         |
 | :---          | :---         |
 | `id`          | Integer (PK) |
@@ -135,7 +135,7 @@ Stores all registered applications supported by the help desk.
 | `description` | TEXT         |
 | `owning_team` | VARCHAR(100) |
 | `contact`     | VARCHAR(200) |
-
+```
 **Purpose**: Acts as the master table for all software applications.
 
 #### 2. Application Purposes
