@@ -89,7 +89,7 @@ backend/
 │   ├── multilingual-e5-base/  # 768-dim multilingual embedding model
 │   └── whisper-small-ct2/     # faster-whisper STT model (460 MB, int8)
 │
-├── voice/                     # 🎤 PHASE 2 - Voice Layer (Team A)
+├── voice/                     # 🎤 PHASE 2 - Voice Layer (
 │   ├── __init__.py
 │   ├── stt.py                 # Speech-to-Text via faster-whisper
 │   │                          # (CPU, int8 quantized, auto language detect)
@@ -109,14 +109,14 @@ backend/
 │       ├── fallback_operator.wav
 │       └── goodbye.wav
 │
-├── services/                  # 🧠 TEAM B DOMAIN (AI & Business Rules)
+├── services/                  # 🧠 DOMAIN (AI & Business Rules)
 │   ├── __init__.py
 │   ├── embedder.py            # R-8, R-25 - Multilingual pgvector embeddings
 │   ├── classifier.py          # R-11, R-12 - Fault type & severity (keyword-based)
 │   ├── search.py              # R-9, R-24 - Candidate ranking & Learning Loop
 │   └── dependencies.py        # R-10 - Conditional dependency mapping
 │
-└── routers/                   # ⚙️ TEAM A DOMAIN (API Endpoints)
+└── routers/                   # ⚙️  DOMAIN (API Endpoints)
     ├── __init__.py
     ├── admin.py               # R-3, R-4 - App Registry CRUD
     ├── tickets.py             # R-5 to R-21 - Intake & Ticket Lifecycle
