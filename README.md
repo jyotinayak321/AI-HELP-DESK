@@ -60,15 +60,16 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 +------------------------------------------------------------------------+
 ```
 ## Technology Stack
-*   **Backend**: FastAPI (Python 3.11.x)
-*   **Frontend**: React (Vite, Node.js 20.x LTS)
-*   **Database**: PostgreSQL 16.x + `pgvector` v0.7.x extension
-*   **Embedding Model**: `intfloat/multilingual-e5-large` (Local Sentence-Transformers)
-*   **Inference Model**: `Qwen/Qwen2.5-7B-Instruct-GGUF` (Local via Ollama/llama.cpp)
-*   **STT Model**: `Systran/faster-whisper-medium` (CTranslate2 Local Wrapper)
-*   **TTS Model**: `MyShell-AI/MeloTTS-English-Hindi` (Local Inference)
 
-  
+- **Backend**: FastAPI (Python 3.11.x)
+- **Frontend**: React (Vite, Node.js 20.x LTS)
+- **Database**: PostgreSQL 16 + pgvector v0.7
+- **Embedding Model**: intfloat/multilingual-e5-base (768-dim, Local)
+- **STT Model**: faster-whisper (CPU, int8, Whisper Transformer)
+- **TTS Engine**: Windows SAPI5 via pyttsx3 (offline)
+- **Auth**: Keycloak 24.0.4 (OAuth2/OIDC, JWT RS256)
+- **Containerization**: Docker + Docker Compose
+
 ## Repository Layout
 ```text
 backend/
