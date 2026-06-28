@@ -158,30 +158,57 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 
   
 ## Repository Layout
-```text
 
+```text
 backend/
 │
-├── requirements.txt      # Dependencies
-├── main.py               # App entry point & server config
-├── config.py             # Environment variables (DB connection strings)
-├── database.py           # SQLModel engine & session management
-├── models.py             # SQLModel table schemas (from our DB dump)
-├── schemas.py            # Pydantic validation for API inputs/outputs
+├── requirements.txt           # Python dependencies
+├── main.py                    # App entry point & server config
+├── config.py                  # Environment variables (DB connection strings)
+├── database.py                # SQLModel engine & session management
+├── models.py                  # SQLModel table schemas
+├── schemas.py                 # Pydantic validation for API inputs/outputs
+├── voice_schemas.py           # Pydantic schemas for Voice Layer API
+├── security.py                # JWT token verification via Keycloak SSO
+├── seed_db.py                 # Database seeding with AI vectors
+├── generate_static_prompts.py # Pre-recorded TTS audio generation (SAPI5)
 │
-├── local_models/         # Offline HuggingFace Weights (Air-gapped - R-27)
+├── local_models/              # Offline Model Weights (Air-gapped)
+│   ├── multilingual-e5-base/  # 768-dim multilingual embedding model
+│   └── whisper-small-ct2/     # faster-whisper STT model (460 MB, int8)
 │
-├── services/             # 🧠 TEAM B DOMAIN (AI & Business Rules)
-│   ├── _init_.py
-│   ├── embedder.py       # Handles R-8, R-25 (Multilingual pgvector)
-│   ├── classifier.py     # Handles R-11, R-12 (Fault & Severity)
-│   ├── search.py         # Handles R-9, R-24 (Candidate ranking & Learning Loop)
-│   └── dependencies.py   # Handles R-10 (Conditional mapping)
+├── voice/                     # 🎤 PHASE 2 - Voice Layer (
+│   ├── __init__.py
+│   ├── stt.py                 # Speech-to-Text via faster-whisper
+│   │                          # (CPU, int8 quantized, auto language detect)
+│   ├── tts.py                 # Text-to-Speech via Windows SAPI5 (pyttsx3)
+│   │                          # (Piper VITS implemented but not deployed)
+│   ├── validators.py          # Service number validation
+│   │                          # (NATO phonetic alphabet + Regex ^\d{7}[A-Z]$)
+│   ├── session.py             # Voice session state machine (6 states)
+│   ├── audio.py               # Audio format conversion via ffmpeg
+│   ├── prompts.py             # Pre-recorded static prompt management
+│   └── static_prompts/        # Pre-generated WAV audio files (SAPI5)
+│       ├── greeting.wav
+│       ├── ask_service_number.wav
+│       ├── ask_complaint.wav
+│       ├── confirm_yes_no.wav
+│       ├── retry_service_number.wav
+│       ├── fallback_operator.wav
+│       └── goodbye.wav
 │
-└── routers/              # ⚙️ TEAM A DOMAIN (API Endpoints)
-    ├── _init_.py
-    ├── admin.py          # Handles R-3, R-4 (App Registry CRUD)
-    └── tickets.py        # Handles R-5 to R-7, R-13 to R-21 (Intake & Lifecycle)
+├── services/                  # 🧠 DOMAIN (AI & Business Rules)
+│   ├── __init__.py
+│   ├── embedder.py            # R-8, R-25 - Multilingual pgvector embeddings
+│   ├── classifier.py          # R-11, R-12 - Fault type & severity (keyword-based)
+│   ├── search.py              # R-9, R-24 - Candidate ranking & Learning Loop
+│   └── dependencies.py        # R-10 - Conditional dependency mapping
+│
+└── routers/                   # ⚙️  DOMAIN (API Endpoints)
+    ├── __init__.py
+    ├── admin.py               # R-3, R-4 - App Registry CRUD
+    ├── tickets.py             # R-5 to R-21 - Intake & Ticket Lifecycle
+    └── voice.py               # R-30 to R-39 - Voice Layer Endpoints
 
 frontend/src/
 │
