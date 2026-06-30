@@ -4,6 +4,7 @@ import {
   submitServiceNumberAudio, 
   submitComplaintAudio, 
   confirmServiceNumber,
+  submitConfirmAudio,
   submitFallback,
   fetchAudioBlob
 } from '../../api/voice.api';
@@ -35,14 +36,22 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
   // so Replay can play them again without any network/TTS calls.
   const confirmSequenceRef = useRef([]);
 
+  const isMounted = useRef(true);
+  const playbackIdRef = useRef(0);
+
   useEffect(() => {
+    isMounted.current = true;
     // Start session on mount
     initSession();
     
     return () => {
+      isMounted.current = false;
+      playbackIdRef.current++; // Abort any running sequence
       // Cleanup audio
-      audioPlayerRef.current.pause();
-      audioPlayerRef.current.src = '';
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.src = '';
+      }
     };
   }, []);
 
@@ -50,6 +59,7 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
     setIsProcessing(true);
     try {
       const res = await startVoiceSession();
+      if (!isMounted.current) return;
       setSession(prev => ({
         ...prev,
         id: res.data.session_id,
@@ -60,25 +70,40 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
       playAudio(`http://127.0.0.1:8000/api/voice/prompt/greeting`);
     } catch (err) {
       console.error(err);
-      setSession(prev => ({ ...prev, state: 'ERROR', promptText: 'Failed to start voice session.' }));
+      if (isMounted.current) {
+        setSession(prev => ({ ...prev, state: 'ERROR', promptText: 'Failed to start voice session.' }));
+      }
     } finally {
-      setIsProcessing(false);
+      if (isMounted.current) setIsProcessing(false);
+    }
+  };
+
+  const stopAllAudio = () => {
+    playbackIdRef.current++; // Invalidates active play sequences
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current.currentTime = 0;
+      audioPlayerRef.current.src = '';
     }
   };
 
   const playAudio = async (url) => {
     if (!url) return null;
+    const currentId = ++playbackIdRef.current;
     try {
       if (audioPlayerRef.current) {
         audioPlayerRef.current.pause();
         audioPlayerRef.current.src = '';
       }
       const blobUrl = await fetchAudioBlob(url);
+      if (!isMounted.current || playbackIdRef.current !== currentId) return null;
       audioPlayerRef.current.src = blobUrl;
       await audioPlayerRef.current.play();
       return blobUrl;
     } catch (e) {
-      console.error('Audio play failed:', e);
+      if (playbackIdRef.current === currentId) {
+        console.error('Audio play failed:', e);
+      }
       return null;
     }
   };
@@ -90,9 +115,12 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
   const playSequential = async (urls) => {
     const player = audioPlayerRef.current;
     const blobs = [];
-    for (const url of urls) {
+    const currentId = ++playbackIdRef.current;
+    for (let url of urls) {
+      if (!isMounted.current || playbackIdRef.current !== currentId) break;
       try {
         const blobUrl = await fetchAudioBlob(url);
+        if (!isMounted.current || playbackIdRef.current !== currentId) break;
         blobs.push(blobUrl);
         player.src = blobUrl;
         await new Promise((resolve, reject) => {
@@ -101,6 +129,7 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
           player.play().catch(reject);
         });
       } catch (e) {
+        if (playbackIdRef.current !== currentId) break; // User intentionally stopped it
         console.error('Sequential audio failed at:', url, e);
         blobs.push(null);
       }
@@ -113,7 +142,26 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
     setIsProcessing(true);
 
     try {
-      if (session.state === 'CAPTURING_SERVICE_NUMBER' || session.state === 'CONFIRMING_SERVICE_NUMBER') {
+      // Issue 1 FIX: CONFIRMING state audio goes to confirm-audio endpoint, not service-number
+      if (session.state === 'CONFIRMING_SERVICE_NUMBER') {
+        const res = await submitConfirmAudio(session.id, audioBlob);
+        setSession(prev => ({
+          ...prev,
+          state: res.data.state,
+          transcript: res.data.recognized_text,
+          promptText: res.data.prompt_text,
+          language: res.data.stt_language,
+          latency: res.data.stt_processing_time_ms,
+        }));
+        if (res.data.state === 'CAPTURING_COMPLAINT') {
+          playAudio(`http://127.0.0.1:8000/api/voice/prompt/ask_complaint`);
+        } else if (res.data.state === 'CAPTURING_SERVICE_NUMBER') {
+          playAudio(`http://127.0.0.1:8000/api/voice/prompt/ask_service_number`);
+        } else {
+          // Unclear — stay on CONFIRMING and replay the number
+          handleReplayServiceNumber();
+        }
+      } else if (session.state === 'CAPTURING_SERVICE_NUMBER') {
         const res = await submitServiceNumberAudio(session.id, audioBlob);
         
         setSession(prev => ({
@@ -129,11 +177,6 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         }));
 
         if (res.data.state === 'CONFIRMING_SERVICE_NUMBER' && res.data.is_valid) {
-          // Three pre-recorded clips played sequentially:
-          //   1. heard_as.wav       — "I heard your service number as"
-          //   2. /spell/{number}    — backend stitches char clips into one WAV (same Zira voice, no gaps)
-          //   3. is_that_correct.wav — "Is that correct?"
-          //   4. confirm_yes_no.wav  — "Please say yes or no."
           const BASE = 'http://127.0.0.1:8000/api/voice';
           const sequence = [
             `${BASE}/prompt/heard_as`,
@@ -142,15 +185,20 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
             `${BASE}/prompt/confirm_yes_no`,
           ];
           confirmSequenceRef.current = [];
-          const blobs = await playSequential(sequence);
-          confirmSequenceRef.current = blobs;
+          
+          // DO NOT await playSequential here, otherwise isProcessing stays true 
+          // and hides the record/confirm buttons until the long sequence finishes.
+          // Releasing it now allows the user to click record/confirm immediately.
+          playSequential(sequence).then(blobs => {
+            if (isMounted.current) confirmSequenceRef.current = blobs;
+          });
         } else if (res.data.state === 'CAPTURING_SERVICE_NUMBER') {
           playAudio(`http://127.0.0.1:8000/api/voice/prompt/retry_service`);
         } else if (res.data.state === 'OPERATOR_FALLBACK') {
           playAudio(`http://127.0.0.1:8000/api/voice/prompt/fallback_operator`);
         }
       } 
-      else if (session.state === 'CAPTURING_COMPLAINT') {
+      else if (session.state === 'CAPTURING_COMPLAINT' || session.state === 'OPERATOR_REVIEW') {
         const res = await submitComplaintAudio(session.id, audioBlob);
         
         setSession(prev => ({
@@ -164,8 +212,10 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         }));
 
         if (res.data.state === 'OPERATOR_REVIEW') {
-           // Play summary
-           playAudio(`http://127.0.0.1:8000/api/voice/tts?text=${encodeURIComponent(res.data.prompt_text)}`);
+           // We do not play the summary audio here anymore.
+           // Since the component unmounts immediately to navigate to ClassifyReview,
+           // we pass the TTS URL to the parent so it can be played on the next screen.
+           const ttsUrl = `http://127.0.0.1:8000/api/voice/tts?text=${encodeURIComponent(res.data.prompt_text)}`;
            
            // Pass the final proposal to the parent SubmitComplaint form
            // We map the response slightly to match the Phase 1 IntakeResponse format expected by ClassifyReview
@@ -184,7 +234,7 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
              complainant_name: '',
              complainant_unit: '',
              complainant_rank: ''
-           });
+           }, ttsUrl);
         }
       }
     } catch (err) {
@@ -237,6 +287,11 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
 
   const handleFallbackSubmit = async () => {
     if (!fallbackData.service_no.trim()) return;
+    const svcPattern = /^\d{3}[a-zA-Z]$/;
+    if (!svcPattern.test(fallbackData.service_no.trim())) {
+      alert('Service number must be exactly 3 digits followed by 1 letter (e.g., 123A).');
+      return;
+    }
     setIsProcessing(true);
     try {
       const res = await submitFallback(session.id, fallbackData);
@@ -294,9 +349,10 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         )}
       </div>
 
-      {(session.state === 'CAPTURING_SERVICE_NUMBER' || session.state === 'CAPTURING_COMPLAINT' || session.state === 'CONFIRMING_SERVICE_NUMBER') && (
+      {(session.state === 'CAPTURING_SERVICE_NUMBER' || session.state === 'CAPTURING_COMPLAINT' || session.state === 'CONFIRMING_SERVICE_NUMBER' || session.state === 'OPERATOR_REVIEW') && (
         <VoiceRecorder 
-          onRecordingComplete={handleRecordingComplete} 
+          onRecordingComplete={handleRecordingComplete}
+          onRecordingStart={stopAllAudio}
           isProcessing={isProcessing} 
         />
       )}

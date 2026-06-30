@@ -14,7 +14,7 @@ Requirement coverage: R-5, R-6, R-7, R-9, R-10, R-13, R-14, R-15,
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import Session, select, col, func, text
+from sqlmodel import Session, select, col, func, text, or_
 import datetime as dt_lib
 from datetime import timedelta, timezone
 from typing import Optional
@@ -55,6 +55,7 @@ from services.embedder import TextEmbedder
 from services.classifier import TicketClassifier
 from services.search import ApplicationSearchEngine
 from services.dependencies import ApplicationDependencyEngine
+from services.llm_client import verify_and_correct_text
 
 # Initialize the global instances so they don't load models on every request
 embedder = TextEmbedder()
@@ -131,11 +132,23 @@ def create_intake(
     session.refresh(intake)
 
     # -----------------------------------------------------------------
-    # 1b. AI PIPELINE — Call Team B's functions
+    # 1b. LLM GUARDRAIL — Verify language + fix STT errors
+    # -----------------------------------------------------------------
+    guardrail_result = verify_and_correct_text(request.raw_text)
+    if guardrail_result["status"] == "rejected":
+        raise HTTPException(
+            status_code=400,
+            detail=guardrail_result.get("reason", "Complaint was rejected by the guardrail.")
+        )
+    # Use the LLM-corrected text for the rest of the pipeline
+    complaint_text = guardrail_result.get("corrected_text", request.raw_text)
+
+    # -----------------------------------------------------------------
+    # 1c. AI PIPELINE — Call Team B's functions
     # -----------------------------------------------------------------
 
-    # Step 1: Generate embedding vector from complaint text
-    embedding = embedder.get_embedding(request.raw_text)
+    # Step 1: Generate embedding vector from corrected complaint text
+    embedding = embedder.get_embedding(complaint_text)
 
     # -----------------------------------------------------------------
     # 1c. SEMANTIC DUPLICATE & MASS OUTAGE CHECK
@@ -183,8 +196,8 @@ def create_intake(
             })
 
     # Step 2: Classify fault type and severity using Hybrid Strategy
-    fault_type = classifier.classify_fault_type(session, request.raw_text, embedding)
-    severity = classifier.classify_severity(session, request.raw_text, embedding)
+    fault_type = classifier.classify_fault_type(session, complaint_text, embedding)
+    severity = classifier.classify_severity(session, complaint_text, embedding)
 
     # Step 3: Find candidate applications via vector similarity search
     raw_candidates = search_engine.search_candidates(session, embedding)
@@ -340,10 +353,16 @@ def confirm_ticket(
     # R-22: Save to learning_examples (prediction vs confirmed)
     # This feeds the AI learning loop.
     # -----------------------------------------------------------------
-    embedding = embedder.get_embedding(intake.raw_text)
+    final_text = request.edited_raw_text if request.edited_raw_text else intake.raw_text
+    
+    if request.edited_raw_text and request.edited_raw_text != intake.raw_text:
+        intake.raw_text = request.edited_raw_text
+        session.add(intake)
+        
+    embedding = embedder.get_embedding(final_text)
     learning_entry = LearningExample(
         ticket_number=ticket_number,
-        raw_text=intake.raw_text,
+        raw_text=final_text,
         text_embedding=embedding,
         predicted_app_id=request.predicted_app_id,
         confirmed_app_id=request.confirmed_app_id,
@@ -454,8 +473,14 @@ def list_tickets(
             pass
 
     if search:
-        # Simple search across ticket number, or just basic string match
-        statement = statement.where(col(Ticket.ticket_number).contains(search))
+        # Search across ticket number or complaint text
+        statement = statement.outerjoin(Intake, Ticket.intake_id == Intake.id)
+        statement = statement.where(
+            or_(
+                col(Ticket.ticket_number).ilike(f"%{search}%"),
+                col(Intake.raw_text).ilike(f"%{search}%")
+            )
+        )
 
     # Get total count before pagination
     count_statement = select(func.count()).select_from(statement.subquery())

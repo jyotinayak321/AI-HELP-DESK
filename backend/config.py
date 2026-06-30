@@ -44,6 +44,20 @@ class Settings(BaseSettings):
     VOICE_SESSION_TTL: int = 1800      # seconds (30 min default)
     VOICE_MAX_SVC_RETRIES: int = 3
 
+    # -- Phase 3: LLM Guardrail & Classification ----
+    # The vLLM server URL exposed by the air-gapped environment.
+    # Example: "http://10.0.0.5:8001/v1"
+    VLLM_API_URL: str = "http://localhost:8001/v1"
+    # The model name as registered on the vLLM server.
+    VLLM_MODEL_NAME: str = "google/gemma-4-31B-it"
+    # API key if the vLLM server requires one (leave blank if not needed).
+    VLLM_API_KEY: str = "none"
+    # --- OFFLINE DEVELOPMENT FLAG ---
+    # Set to True at home to skip LLM network calls entirely.
+    # The system will return a realistic mock response so the UI can be built
+    # and tested without needing access to the air-gapped vLLM server.
+    MOCK_LLM: bool = True
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

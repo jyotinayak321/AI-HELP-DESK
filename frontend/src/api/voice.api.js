@@ -38,6 +38,20 @@ export const confirmServiceNumber = async (sessionId, confirmed, overrideData = 
 };
 
 /**
+ * Upload audio for the yes/no service number confirmation step.
+ * @param {string} sessionId
+ * @param {Blob} audioBlob
+ */
+export const submitConfirmAudio = async (sessionId, audioBlob) => {
+  const formData = new FormData();
+  formData.append('session_id', sessionId);
+  formData.append('audio', audioBlob, 'audio.webm');
+  return api.post('/api/voice/confirm-audio', formData, {
+    headers: { 'Content-Type': undefined },
+  });
+};
+
+/**
  * Upload audio to capture and classify the complaint.
  * @param {string} sessionId
  * @param {Blob} audioBlob

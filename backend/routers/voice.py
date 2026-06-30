@@ -24,6 +24,7 @@ Requirements Covered:
 
 import time
 import logging
+import re
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import Response
@@ -38,6 +39,7 @@ from services.classifier import TicketClassifier
 from services.search import ApplicationSearchEngine
 from services.dependencies import ApplicationDependencyEngine
 from models import Application, Intake
+from services.llm_client import verify_and_correct_text
 
 # Phase 2 voice modules
 from voice.stt import SpeechToTextEngine
@@ -55,6 +57,7 @@ from voice_schemas import (
     VoiceServiceNumberResponse,
     VoiceConfirmRequest,
     VoiceConfirmResponse,
+    VoiceConfirmAudioResponse,
     VoiceComplaintResponse,
     VoiceCandidateApp,
     VoiceStatusResponse,
@@ -154,7 +157,7 @@ async def voice_service_number(
       1. Convert audio to WAV
       2. Run STT transcription
       3. Normalise & validate the service number
-      4. If valid → transition to CONFIRMING_SERVICE_NUMBER
+      4. If valid → transition to ManagerNFIRMING_SERVICE_NUMBER
       5. If invalid → increment retries or fall back to operator
 
     Satisfies R-30 (voice capture) and R-32 (validation).
@@ -218,9 +221,38 @@ async def voice_service_number(
     try:
         result = stt.transcribe(wav_bytes)
     except Exception as exc:
-        logger.error("STT failed for session %s: %s", session_id, exc, exc_info=True)
-        session.errors.append(f"STT error: {exc}")
-        raise HTTPException(status_code=500, detail=f"Speech recognition failed: {exc}")
+        logger.warning("STT failed for session %s (treating as silent): %s", session_id, exc)
+        # Don't crash with 500 — treat any STT error as a silent/empty recording
+        # and route back into the retry loop gracefully.
+        retries = session_manager.increment_svc_retries(session_id)
+        if session_manager.should_fallback(session_id):
+            session_manager.transition(session_id, SessionState.OPERATOR_FALLBACK)
+            return VoiceServiceNumberResponse(
+                session_id=session_id,
+                state=SessionState.OPERATOR_FALLBACK.value,
+                recognized_text="",
+                normalised_service_no="",
+                is_valid=False,
+                retries_count=retries,
+                max_retries=MAX_SERVICE_NUMBER_RETRIES,
+                prompt_text=get_prompt_text("fallback_operator"),
+                error_reason="Audio processing failed. Maximum retries exceeded.",
+            )
+        return VoiceServiceNumberResponse(
+            session_id=session_id,
+            state=SessionState.CAPTURING_SERVICE_NUMBER.value,
+            recognized_text="",
+            normalised_service_no="",
+            is_valid=False,
+            retries_count=retries,
+            max_retries=MAX_SERVICE_NUMBER_RETRIES,
+            prompt_text=render_dynamic_prompt(
+                "retry_service_number",
+                attempt=retries,
+                max_attempts=MAX_SERVICE_NUMBER_RETRIES,
+            ),
+            error_reason="Could not process audio. Please try again.",
+        )
 
     session.total_stt_calls += 1
     session.stt_latency_ms = result.processing_time_ms
@@ -418,6 +450,111 @@ def voice_confirm(
 
 
 # =====================================================================
+# 3b. POST /voice/confirm-audio — Confirm via voice (say "yes" or "no")
+# =====================================================================
+
+@router.post("/confirm-audio", response_model=VoiceConfirmAudioResponse)
+async def voice_confirm_audio(
+    session_id: str = Form(...),
+    audio: UploadFile = File(...),
+    current_user: CurrentUser = Depends(require_operator),
+):
+    """
+    Accept a voice recording for the yes/no confirmation step.
+    Runs STT and parses the response for yes/no intent in
+    English, Hindi, and Hinglish.
+    """
+    session = session_manager.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Voice session not found or expired.")
+
+    if session.state != SessionState.CONFIRMING_SERVICE_NUMBER:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid state for audio confirmation: {session.state.value}",
+        )
+
+    # Read and convert audio
+    raw_bytes = await audio.read()
+    content_type = audio.content_type or "audio/webm"
+    source_format = detect_format_from_content_type(content_type)
+    wav_bytes = convert_to_wav(raw_bytes, source_format=source_format)
+
+    # Detect silence — prompt to repeat
+    if detect_silence(wav_bytes, source_format="wav"):
+        return VoiceConfirmAudioResponse(
+            session_id=session_id,
+            state=SessionState.CONFIRMING_SERVICE_NUMBER.value,
+            recognized_text="",
+            confirmed=None,
+            prompt_text="No speech detected. Please say Yes or No.",
+        )
+
+    # Run STT
+    stt = _get_stt()
+    try:
+        result = stt.transcribe(wav_bytes)
+    except Exception as exc:
+        logger.warning("STT failed during confirm-audio for session %s: %s", session_id, exc)
+        return VoiceConfirmAudioResponse(
+            session_id=session_id,
+            state=SessionState.CONFIRMING_SERVICE_NUMBER.value,
+            recognized_text="",
+            confirmed=None,
+            prompt_text="Could not process audio. Please say Yes or No.",
+        )
+
+    text = (result.text or "").lower().strip()
+    logger.info("[confirm-audio] session=%s transcript='%s'", session_id, text)
+
+    # Remove punctuation so "No." matches "no"
+    clean_text = re.sub(r'[^\w\s]', '', text)
+
+    # Detect YES intent
+    YES_WORDS = {"yes", "yeah", "yep", "correct", "right", "haan", "han", "ha", "bilkul", "sahi", "ok", "okay", "confirm"}
+    NO_WORDS  = {"no", "nope", "wrong", "incorrect", "nahi", "nein", "nai", "nah", "retry", "again"}
+
+    words = set(clean_text.split())
+    is_yes = bool(words & YES_WORDS)
+    is_no  = bool(words & NO_WORDS)
+
+    if is_yes and not is_no:
+        session_manager.transition(session_id, SessionState.CAPTURING_COMPLAINT)
+        return VoiceConfirmAudioResponse(
+            session_id=session_id,
+            state=SessionState.CAPTURING_COMPLAINT.value,
+            recognized_text=result.text,
+            confirmed=True,
+            prompt_text=get_prompt_text("ask_complaint"),
+            stt_language=result.language,
+            stt_processing_time_ms=result.processing_time_ms,
+        )
+
+    if is_no and not is_yes:
+        session_manager.transition(session_id, SessionState.CAPTURING_SERVICE_NUMBER)
+        return VoiceConfirmAudioResponse(
+            session_id=session_id,
+            state=SessionState.CAPTURING_SERVICE_NUMBER.value,
+            recognized_text=result.text,
+            confirmed=False,
+            prompt_text=get_prompt_text("ask_service_number"),
+            stt_language=result.language,
+            stt_processing_time_ms=result.processing_time_ms,
+        )
+
+    # Unclear — ask again
+    return VoiceConfirmAudioResponse(
+        session_id=session_id,
+        state=SessionState.CONFIRMING_SERVICE_NUMBER.value,
+        recognized_text=result.text,
+        confirmed=None,
+        prompt_text="Sorry, I didn't understand. Please say Yes to confirm or No to retry.",
+        stt_language=result.language,
+        stt_processing_time_ms=result.processing_time_ms,
+    )
+
+
+# =====================================================================
 # 4. POST /voice/complaint — Upload audio, transcribe & classify
 # =====================================================================
 
@@ -474,9 +611,16 @@ async def voice_complaint(
     try:
         result = stt.transcribe(wav_bytes)
     except Exception as exc:
-        logger.error("STT failed for complaint in session %s: %s", session_id, exc)
-        session.errors.append(f"STT error: {exc}")
-        raise HTTPException(status_code=500, detail=f"Speech recognition failed: {exc}")
+        logger.warning("STT failed for complaint in session %s (treating as silent): %s", session_id, exc)
+        return VoiceComplaintResponse(
+            session_id=session_id,
+            state=session.state.value,
+            transcript="",
+            confidence=0.0,
+            stt_language=None,
+            stt_processing_time_ms=0.0,
+            prompt_text="Could not process audio. Please describe your complaint again.",
+        )
 
     session.total_stt_calls += 1
     session.stt_latency_ms = result.processing_time_ms
@@ -493,6 +637,23 @@ async def voice_complaint(
         )
 
     complaint_text = result.text.strip()
+
+    # ── LLM GUARDRAIL — Verify language + fix STT errors ─────────────────────
+    guardrail_result = verify_and_correct_text(complaint_text)
+    if guardrail_result["status"] == "rejected":
+        # Re-prompt the caller to speak again
+        reason = guardrail_result.get("reason", "Complaint could not be understood.")
+        return VoiceComplaintResponse(
+            session_id=session_id,
+            state=session.state.value,
+            transcript=complaint_text,
+            confidence=result.confidence,
+            stt_language=result.language,
+            stt_processing_time_ms=result.processing_time_ms,
+            prompt_text=f"{reason} Please describe your IT issue again clearly.",
+        )
+    # Use the LLM-corrected text for classification
+    complaint_text = guardrail_result.get("corrected_text", complaint_text)
 
     # ── Phase 1 AI Pipeline (REUSED UNCHANGED) ────────────────────────
 

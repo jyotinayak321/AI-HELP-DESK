@@ -186,6 +186,8 @@ class TicketConfirmRequest(BaseModel):
     confirmed_fault_type: str = Field(..., examples=["login/access"])
     confirmed_severity: str = Field(..., examples=["high"])
     operator_notes: str = Field(default="", examples=["User confirmed SSO was down"])
+    edited_raw_text: Optional[str] = Field(default=None, description="The operator's manually edited complaint text")
+
 
     # What the AI originally predicted (for learning loop comparison)
     predicted_app_id: Optional[int] = None
@@ -315,6 +317,7 @@ class TicketConfirmItem(BaseModel):
     confirmed_fault_type: str = Field(..., examples=["login/access"])
     confirmed_severity: str = Field(..., examples=["high"])
     operator_notes: str = Field(default="")
+    edited_raw_text: Optional[str] = None
     predicted_app_id: Optional[int] = None
     predicted_fault_type: Optional[str] = None
     predicted_severity: Optional[str] = None

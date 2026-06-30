@@ -2,69 +2,69 @@
     "applications": [
         {
             "id": 1,
-            "name": "AFNET Portal",
-            "description": "Air Force intranet and communication portal",
+            "name": "Corporate Intranet Portal",
+            "description": "Corporate intranet and communication portal",
             "owning_team": "IT-HQ-Delhi",
-            "contact": "afnet@iaf.in"
+            "contact": "afnet@company.com"
         },
         {
             "id": 2,
-            "name": "HRMS IAF",
-            "description": "Human resource management for IAF personnel records and postings",
+            "name": "HRMS Company",
+            "description": "Human resource management for employees records and postings",
             "owning_team": "HR-Directorate",
-            "contact": "hrms@iaf.in"
+            "contact": "hrms@company.com"
         },
         {
             "id": 3,
             "name": "Leave Management System",
-            "description": "Online leave application and approval system for IAF personnel",
+            "description": "Online leave application and approval system for employees",
             "owning_team": "HR-Directorate",
-            "contact": "leave@iaf.in"
+            "contact": "leave@company.com"
         },
         {
             "id": 4,
             "name": "Travel Concession System",
-            "description": "LTC and travel concession claims for IAF personnel and families",
+            "description": "LTC and travel concession claims for employees and families",
             "owning_team": "Finance-Directorate",
-            "contact": "travel@iaf.in"
+            "contact": "travel@company.com"
         },
         {
             "id": 5,
             "name": "SSO Gateway",
-            "description": "Single sign-on authentication gateway for all IAF applications",
+            "description": "Single sign-on authentication gateway for all Company applications",
             "owning_team": "IT-Security",
-            "contact": "sso@iaf.in"
+            "contact": "sso@company.com"
         },
         {
             "id": 6,
             "name": "Pay and Allowances Portal",
-            "description": "Salary slip, arrears and allowance management for IAF personnel",
+            "description": "Salary slip, arrears and allowance management for employees",
             "owning_team": "Accounts-Directorate",
-            "contact": "pay@iaf.in"
+            "contact": "pay@company.com"
         },
         {
             "id": 7,
             "name": "Medical Records System",
-            "description": "IAF personnel medical history and fitness category records",
+            "description": "employees medical history and fitness category records",
             "owning_team": "Medical-Directorate",
-            "contact": "medical@iaf.in"
+            "contact": "medical@company.com"
         },
         {
             "id": 8,
             "name": "Training Management System",
             "description": "Course nominations, training records and promotion exam results",
             "owning_team": "Training-Directorate",
-            "contact": "training@iaf.in"
+            "contact": "training@company.com"
         }
     ],
     "application_purposes": [
         {
             "application_id": 1,
-            "purpose_text": "I need to access the military intranet network for official communication."
+            "purpose_text": "I need to access the corporate intranet network for official communication."
         },
         {
             "application_id": 1,
-            "purpose_text": "Looking up station-wide announcements and internal documents."
+            "purpose_text": "Looking up office-wide announcements and internal documents."
         },
         {
             "application_id": 2,
@@ -96,7 +96,7 @@
         },
         {
             "application_id": 5,
-            "purpose_text": "Unlocking my account so I can log into other military applications."
+            "purpose_text": "Unlocking my account so I can log into other corporate applications."
         },
         {
             "application_id": 6,
@@ -112,11 +112,11 @@
         },
         {
             "application_id": 7,
-            "purpose_text": "Viewing the medical board results and AFB 1771 forms."
+            "purpose_text": "Viewing the medical board results and Health Assessment forms."
         },
         {
             "application_id": 8,
-            "purpose_text": "Applying for upcoming professional military training courses."
+            "purpose_text": "Applying for upcoming professional corporate training courses."
         },
         {
             "application_id": 8,
@@ -126,15 +126,15 @@
     "application_symptoms": [
         {
             "application_id": 1,
-            "symptom_text": "AFNET portal not loading on station computer"
+            "symptom_text": "Corporate Intranet portal not loading on office computer"
         },
         {
             "application_id": 1,
-            "symptom_text": "Unable to access intranet from unit terminal"
+            "symptom_text": "Unable to access intranet from office terminal"
         },
         {
             "application_id": 1,
-            "symptom_text": "AFNET login page giving error after password entry"
+            "symptom_text": "Corporate Intranet login page giving error after password entry"
         },
         {
             "application_id": 2,
@@ -146,11 +146,11 @@
         },
         {
             "application_id": 2,
-            "symptom_text": "Personal details showing wrong unit in system"
+            "symptom_text": "Personal details showing wrong department in system"
         },
         {
             "application_id": 3,
-            "symptom_text": "Leave application submitted but not showing to CO"
+            "symptom_text": "Leave application submitted but not showing to Manager"
         },
         {
             "application_id": 3,
@@ -202,7 +202,7 @@
         },
         {
             "application_id": 7,
-            "symptom_text": "AFB 1771 medical form not accessible online"
+            "symptom_text": "Health Assessment medical form not accessible online"
         },
         {
             "application_id": 8,

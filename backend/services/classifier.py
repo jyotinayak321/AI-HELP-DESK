@@ -1,37 +1,28 @@
 import os
 from typing import Optional, List
-# pyrefly: ignore [missing-import]
-from transformers import pipeline
 from sqlmodel import Session, select
 from sqlalchemy import text
 from models import ClassificationConfig
+from services.llm_client import predict_fault_and_severity
 
 class TicketClassifier:
     """
     Handles zero-shot categorization for Fault Types (R-11) and Severity Ranks (R-12)
     using a Hybrid Strategy:
-      1. History-based k-NN lookup via pgvector.
-      2. Database-driven Zero-Shot classification fallback using descriptive prompts.
+      1. History-based k-NN lookup via pgvector (preserved — critical for learning loop).
+      2. LLM-based classification fallback via the air-gapped vLLM server (Gemma 4).
+         (Replaces the old mDeBERTa-v3 zero-shot pipeline.)
     """
-    
+
     def __init__(self):
-        # Dynamically resolve path to the local model relative to this file
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        model_dir = os.path.join(current_dir, "..", "local_models", "mDeBERTa-v3")
-        self.model_path = os.path.normpath(model_dir)
-        
-        # Initialize zero-shot pipeline strictly from local files (air-gapped)
-        self.classifier = pipeline(
-            task="zero-shot-classification", 
-            model=self.model_path, 
-            tokenizer=self.model_path,
-            local_files_only=True
-        )
+        # No local model to load anymore. The LLM client is used for fallback.
+        pass
 
     def _get_history_match(self, session: Session, embedding: List[float], category: str) -> Optional[str]:
         """
         Searches learning_examples for a very highly confident past ticket to copy its label.
-        Requires a cosine distance < 0.15 (similarity > 85%).
+        Requires a cosine distance < 0.08 (similarity > 92%).
+        This is the core of the learning loop and must be preserved.
         """
         embedding_str = "[" + ",".join(map(str, embedding)) + "]"
         query = text("""
@@ -48,44 +39,36 @@ class TicketClassifier:
                 return result.confirmed_severity
         return None
 
-    def _fallback_zero_shot(self, session: Session, text_content: str, category: str) -> str:
-        """
-        Uses the zero-shot model but queries the database for descriptive prompt labels
-        to drastically improve accuracy, instead of hardcoding keywords.
-        """
-        configs = session.exec(select(ClassificationConfig).where(ClassificationConfig.category == category)).all()
-        if not configs:
-            return "other" if category == "fault_type" else "normal"
-            
-        # Map descriptions to labels
-        desc_to_label = {c.description: c.label for c in configs}
-        descriptions = list(desc_to_label.keys())
-        
-        result = self.classifier(text_content, candidate_labels=descriptions)
-        winning_description = result["labels"][0]
-        
-        return desc_to_label[winning_description]
-
     def classify_fault_type(self, session: Session, text_content: Optional[str], embedding: List[float]) -> str:
+        """
+        Hybrid classification for fault_type:
+          1. First, check the learning_examples database for a historical match.
+          2. If none, call the LLM (Gemma 4 via vLLM) to classify.
+        """
         if text_content is None or not text_content.strip():
             return "other"
         
-        # 1. Try history
+        # 1. Try history match first (preserves the learning loop)
         history_match = self._get_history_match(session, embedding, "fault_type")
         if history_match:
             print(f"[AI] History match found for fault_type: {history_match}")
             return history_match
             
-        # 2. Fallback to descriptive zero-shot
-        print("[AI] No history match. Falling back to DB zero-shot for fault_type.")
-        return self._fallback_zero_shot(session, text_content.strip(), "fault_type")
+        # 2. Fallback to LLM classification
+        print("[AI] No history match. Calling LLM for fault_type classification.")
+        result = predict_fault_and_severity(text_content.strip())
+        return result.get("fault_type", "other")
 
     def classify_severity(self, session: Session, text_content: Optional[str], embedding: List[float]) -> str:
+        """
+        LLM-based classification for severity.
+        History matching is skipped for severity because vector embeddings cluster
+        topically (by subject matter), not by urgency, making them a poor signal.
+        """
         if text_content is None or not text_content.strip():
             return "normal"
             
-        # Asymmetric Strategy: Severity bypasses history lookup completely.
-        # Vector embeddings cluster topically, which is poor for measuring urgency.
-        # We rely 100% on the NLI zero-shot classifier for severity.
-        print("[AI] Bypassing history for severity. Using pure DB zero-shot.")
-        return self._fallback_zero_shot(session, text_content.strip(), "severity")
+        # Always use LLM for severity (no history check — consistent with old strategy)
+        print("[AI] Calling LLM for severity classification.")
+        result = predict_fault_and_severity(text_content.strip())
+        return result.get("severity", "normal")

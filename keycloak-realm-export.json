@@ -32,7 +32,7 @@
     "users": [
         {
             "username": "OP-10001",
-            "email": "op-10001@afnet.local",
+            "email": "op-10001@company.local",
             "firstName": "Operator",
             "lastName": "10001",
             "enabled": true,
@@ -49,7 +49,7 @@
         },
         {
             "username": "OP-10002",
-            "email": "op-10002@afnet.local",
+            "email": "op-10002@company.local",
             "firstName": "Operator",
             "lastName": "10002",
             "enabled": true,
@@ -66,7 +66,7 @@
         },
         {
             "username": "OP-10003",
-            "email": "op-10003@afnet.local",
+            "email": "op-10003@company.local",
             "firstName": "Operator",
             "lastName": "10003",
             "enabled": true,
@@ -83,14 +83,14 @@
         },
         {
             "username": "ADM-20001",
-            "email": "adm-20001@afnet.local",
+            "email": "adm-20001@company.local",
             "firstName": "Admin",
             "lastName": "20001",
             "enabled": true,
             "credentials": [
                 {
                     "type": "password",
-                    "value": "pass_afnet",
+                    "value": "pass_company",
                     "temporary": false
                 }
             ],
@@ -100,7 +100,7 @@
         },
         {
             "username": "ADM-20002",
-            "email": "adm-20002@afnet.local",
+            "email": "adm-20002@company.local",
             "firstName": "Admin",
             "lastName": "20002",
             "enabled": true,
@@ -117,7 +117,7 @@
         },
         {
             "username": "ADM-20003",
-            "email": "adm-20003@afnet.local",
+            "email": "adm-20003@company.local",
             "firstName": "Admin",
             "lastName": "20003",
             "enabled": true,
@@ -134,7 +134,7 @@
         },
         {
             "username": "ADM-20004",
-            "email": "adm-20004@afnet.local",
+            "email": "adm-20004@company.local",
             "firstName": "Admin",
             "lastName": "20004",
             "enabled": true,
@@ -151,7 +151,7 @@
         },
         {
             "username": "ADM-20005",
-            "email": "adm-20005@afnet.local",
+            "email": "adm-20005@company.local",
             "firstName": "Admin",
             "lastName": "20005",
             "enabled": true,
@@ -168,7 +168,7 @@
         },
         {
             "username": "ADM-20006",
-            "email": "adm-20006@afnet.local",
+            "email": "adm-20006@company.local",
             "firstName": "Admin",
             "lastName": "20006",
             "enabled": true,
@@ -185,7 +185,7 @@
         },
         {
             "username": "ADM-20007",
-            "email": "adm-20007@afnet.local",
+            "email": "adm-20007@company.local",
             "firstName": "Admin",
             "lastName": "20007",
             "enabled": true,

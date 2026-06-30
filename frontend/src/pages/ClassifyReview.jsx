@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { confirmTicket, confirmMultiTicket } from '../api/tickets.api';
+import { fetchAudioBlob } from '../api/voice.api';
 import { FAULT_TYPES, SEVERITY_LEVELS, SEVERITY_COLOR } from '../constants/enums';
 import ErrorMessage from '../components/ui/ErrorMessage';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
@@ -86,8 +87,36 @@ function ClassifyReview() {
 
   if (!state?.intakeResponse) { navigate('/submit'); return null; }
 
-  const { intakeResponse, originalForm } = state;
+  const { intakeResponse, originalForm, ttsUrl } = state;
   const { candidates, fault_type_proposal, severity_proposal, is_repeat_caller, potential_duplicates, intake_id } = intakeResponse;
+  
+  const [editedComplaint, setEditedComplaint] = useState(originalForm.raw_text);
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (ttsUrl) {
+      const playTts = async () => {
+        try {
+          const blobUrl = await fetchAudioBlob(ttsUrl);
+          if (!isMounted) return;
+          const audio = new Audio(blobUrl);
+          audioRef.current = audio;
+          await audio.play();
+        } catch (err) {
+          console.error("Failed to play TTS on ClassifyReview", err);
+        }
+      };
+      playTts();
+    }
+    return () => {
+      isMounted = false;
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      }
+    };
+  }, [ttsUrl]);
 
   const sameUserDupes = (potential_duplicates || []).filter(d => d.is_same_user);
   const diffUserDupes = (potential_duplicates || []).filter(d => !d.is_same_user);
@@ -134,6 +163,7 @@ function ClassifyReview() {
           predicted_app_id:     predictedAppId,
           predicted_fault_type: fault_type_proposal,
           predicted_severity:   severity_proposal,
+          edited_raw_text:      editedComplaint,
         };
         const res = await confirmTicket(payload);
         navigate('/tickets', { state: { newTicket: res.data } });
@@ -150,6 +180,7 @@ function ClassifyReview() {
             predicted_app_id:     predictedAppId,
             predicted_fault_type: fault_type_proposal,
             predicted_severity:   severity_proposal,
+            edited_raw_text:      editedComplaint,
           })),
         };
         const res = await confirmMultiTicket(payload);
@@ -195,9 +226,11 @@ function ClassifyReview() {
       {/* Original complaint */}
       <div style={card}>
         <div style={cardTitle}>Original Complaint</div>
-        <div style={{ fontSize: '13px', background: '#f8fafc', borderRadius: '8px', padding: '12px', lineHeight: '1.7' }}>
-          {originalForm.raw_text}
-        </div>
+        <textarea
+          value={editedComplaint}
+          onChange={(e) => setEditedComplaint(e.target.value)}
+          style={{ width: '100%', fontSize: '13px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '12px', lineHeight: '1.7', resize: 'vertical', minHeight: '80px', fontFamily: 'inherit' }}
+        />
         <div style={{ fontSize: '12px', color: '#64748b', marginTop: '8px' }}>
           Service No: <strong>{originalForm.complainant_service_no}</strong>
           {originalForm.complainant_name && ` — ${originalForm.complainant_name}`}

@@ -2,7 +2,7 @@
 voice/validators.py — Service Number Validation (Phase 2)
 ===========================================================
 Normalises speech-transcribed service numbers and validates them
-against the expected AFNET format.
+against the expected enterprise network format.
 
 Requirements Covered:
   R-30: Voice capture of service number
@@ -13,15 +13,19 @@ Design Decisions:
     multiplier words ("double", "triple"), Hindi digit words, and
     phonetic alphabet letters.
   - Regex pattern is kept broad (5–20 alphanumeric + dash) because
-    the exact AFNET format may vary across units.
+    the exact service number format may vary across units.
   - Returns a structured ValidationResult so the session manager can
     decide whether to retry, accept, or fall back.
 """
 
 import re
 import logging
+import json
 from dataclasses import dataclass
 from typing import Optional
+
+from config import settings
+from services.llm_client import _call_llm
 
 logger = logging.getLogger("voice.validators")
 
@@ -110,15 +114,25 @@ def normalise_service_number(raw_text: str) -> str:
         "SVC dash one two three four five"          → "SVC-12345"
         "ek do teen char paanch"                    → "12345"
     """
-    if not raw_text:
-        return ""
+    # ── FAST PATH: Direct pattern scan of the raw text ───────────────────────────
+    # When the STT outputs a compact token like "457F" or "457 F" we can just
+    # strip whitespace and search for the pattern directly — no token splitting needed.
+    # This handles the very common case where the user says the number slowly but
+    # the STT correctly groups it into one or two clean tokens.
+    compacted = re.sub(r'\s+', '', raw_text.strip()).upper()
+    direct_match = re.search(r'[0-9]{3}[A-Z]', compacted)
+    if direct_match:
+        logger.info("normalise_service_number fast-path: '%s' → '%s'", raw_text, direct_match.group(0))
+        return direct_match.group(0)
 
+    # ── SLOW PATH: Token-by-token translation (spoken words like "four five seven F") ─
     # Lowercase and strip
     text = raw_text.strip().lower()
 
     # Remove filler words and punctuation
     text = re.sub(r"[,.\?!]", " ", text)
-    text = re.sub(r"\b(is|mera|my|number|hai|hain|service)\b", "", text)
+    text = re.sub(r"\b(is|mera|my|number|hai|hain|service|no|the|an|ok|okay|please)\b", "", text)
+    # Note: "a" is intentionally NOT in the stopword list because it resolves to "0".
 
     tokens = text.split()
     result_chars = []
@@ -151,7 +165,15 @@ def normalise_service_number(raw_text: str) -> str:
 
         i += 1
 
-    normalised = "".join(result_chars).upper().strip("-")
+    raw_joined = "".join(result_chars).upper().strip("-")
+    
+    # Search for 3 digits followed by 1 letter in the joined string
+    match = re.search(r'[0-9]{3}[A-Z]', raw_joined)
+    if match:
+        normalised = match.group(0)
+    else:
+        normalised = raw_joined
+        
     return normalised
 
 
@@ -180,6 +202,83 @@ def _resolve_token(token: str) -> str:
     return ""
 
 
+def _build_extract_svc_system_prompt() -> str:
+    return """You are a precise data extraction assistant for an Enterprise IT Help Desk.
+Your ONLY task is to extract the caller's service number from an STT (speech-to-text) transcript.
+
+SERVICE NUMBER FORMAT: Exactly 3 digits followed by exactly 1 uppercase letter. Examples: "123A", "457F", "999Z".
+
+DIGIT RECOGNITION — spoken digits must be converted to numerals:
+  - English words:  "zero/oh"=0, "one/won"=1, "two/to/too"=2, "three/tree"=3, "four/for"=4,
+                    "five"=5, "six"=6, "seven"=7, "eight/ate"=8, "nine/niner"=9
+  - Hindi words:    "shunya/sifar"=0, "ek"=1, "do"=2, "teen/tin"=3, "char/chaar"=4,
+                    "paanch/panch"=5, "chhah/chhe"=6, "saat/saath"=7, "aath/aat"=8, "nau"=9
+  - Multipliers:    "double X" means XX (e.g. "double four" = 44), "triple X" means XXX
+
+LETTER RECOGNITION — spoken/phonetic letters must be converted to single uppercase letters:
+  - Direct letters: "A", "B", ... "Z" spoken as individual letters
+  - NATO phonetic:  Alpha=A, Bravo=B, Charlie=C, Delta=D, Echo=E, Foxtrot=F, Golf=G,
+                    Hotel=H, India=I, Juliet/Juliett=J, Kilo=K, Lima=L, Mike=M,
+                    November=N, Oscar=O, Papa=P, Quebec=Q, Romeo=R, Sierra=S,
+                    Tango=T, Uniform=U, Victor=V, Whiskey=W, X-Ray/Xray=X, Yankee=Y, Zulu=Z
+  - Alternate spellings are also valid: "Alfa"=A, "Foxtrot"=F etc.
+
+SELF-CORRECTION: If the user corrects themselves mid-sentence, extract the FINAL intended value.
+  Example: "my number is 4 5 6... no wait, 4 5 7 Foxtrot" → "457F"
+
+FILLER WORDS TO IGNORE: "my", "service", "number", "is", "hai", "mera", "sir", "please", "ok", "uh", "um", "haan"
+
+CONCRETE EXAMPLES:
+  "four five seven foxtrot"       → {"service_number": "457F"}
+  "457 F"                         → {"service_number": "457F"}
+  "457 alpha"                     → {"service_number": "457A"}
+  "457 Alpha"                     → {"service_number": "457A"}
+  "four five seven alpha"         → {"service_number": "457A"}
+  "chaar paanch saat foxtrot"     → {"service_number": "457F"}
+  "one two three A"               → {"service_number": "123A"}
+  "double two nine Zulu"          → {"service_number": "229Z"}
+  "mera number hai 4 5 7 F"       → {"service_number": "457F"}
+  "uh my number, ek do teen Bravo"→ {"service_number": "123B"}
+  "hello sir"                     → {"service_number": null}
+  "I don't know"                  → {"service_number": null}
+
+You MUST respond with ONLY a valid JSON object in this exact format:
+{"service_number": "123A"}
+OR
+{"service_number": null}
+
+Do NOT include any explanation, markdown, or text outside of the JSON object."""
+
+
+def extract_service_number(raw_text: str) -> Optional[str]:
+    """
+    Uses the LLM to intelligently extract a service number from a raw STT transcript.
+    """
+    if settings.MOCK_LLM:
+        logger.info("[LLM MOCK] extract_service_number called. Using regex fallback.")
+        # We reuse the python-based normaliser for mock mode so it can handle
+        # translated phonetic words (e.g. "one two three") offline.
+        return normalise_service_number(raw_text)
+
+    logger.info("[LLM] Calling vLLM to extract service number.")
+    system_prompt = _build_extract_svc_system_prompt()
+    try:
+        raw_response = _call_llm(system_prompt, raw_text)
+        result = json.loads(raw_response)
+        
+        svc_no = result.get("service_number")
+        if not svc_no:
+            return None
+            
+        svc_no = str(svc_no).upper().replace(" ", "").replace("-", "")
+        if re.match(r'^[0-9]{3}[A-Z]$', svc_no):
+            return svc_no
+        return None
+    except Exception as e:
+        logger.error("[LLM] Unexpected error extracting service number: %s", e)
+        return None
+
+
 def validate_service_number(raw_stt_text: str) -> ValidationResult:
     """
     Normalise and validate a spoken service number.
@@ -194,7 +293,8 @@ def validate_service_number(raw_stt_text: str) -> ValidationResult:
     ValidationResult
         Whether the number is valid, the normalised form, and any error reason.
     """
-    normalised = normalise_service_number(raw_stt_text)
+    # Use the LLM to extract the service number intelligently
+    normalised = extract_service_number(raw_stt_text)
 
     if not normalised:
         return ValidationResult(
@@ -204,28 +304,14 @@ def validate_service_number(raw_stt_text: str) -> ValidationResult:
             error_reason="Could not extract any alphanumeric characters from speech.",
         )
 
-    if len(normalised) < 5:
-        return ValidationResult(
-            is_valid=False,
-            normalised=normalised,
-            raw_input=raw_stt_text,
-            error_reason=f"Too short ({len(normalised)} chars). Minimum 5 characters expected.",
-        )
 
-    if len(normalised) > 20:
-        return ValidationResult(
-            is_valid=False,
-            normalised=normalised,
-            raw_input=raw_stt_text,
-            error_reason=f"Too long ({len(normalised)} chars). Maximum 20 characters expected.",
-        )
 
-    if not SERVICE_NUMBER_PATTERN.match(normalised):
+    if not re.match(r"^[0-9]{3}[A-Z]$", normalised):
         return ValidationResult(
             is_valid=False,
             normalised=normalised,
             raw_input=raw_stt_text,
-            error_reason="Does not match expected service number pattern (alphanumeric with optional dashes).",
+            error_reason="Does not match expected service number pattern (3 digits followed by 1 letter).",
         )
 
     logger.info("Service number validated: '%s' → '%s'", raw_stt_text, normalised)

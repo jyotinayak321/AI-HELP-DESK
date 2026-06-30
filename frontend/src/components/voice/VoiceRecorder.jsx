@@ -5,7 +5,7 @@ import React, { useState, useRef, useEffect } from 'react';
  * Handles microphone capture using MediaRecorder API.
  * Provides a simple recording indicator and waveform animation.
  */
-function VoiceRecorder({ onRecordingComplete, isProcessing = false }) {
+function VoiceRecorder({ onRecordingComplete, onRecordingStart, isProcessing = false }) {
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -21,6 +21,9 @@ function VoiceRecorder({ onRecordingComplete, isProcessing = false }) {
   }, []);
 
   const startRecording = async () => {
+    // Issue 4 FIX: Immediately silence any playing TTS before opening the mic
+    if (onRecordingStart) onRecordingStart();
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;

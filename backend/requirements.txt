@@ -66,3 +66,8 @@ faster-whisper==1.0.3
 pydub==0.25.1
 pyttsx3==2.90
 python-multipart==0.0.12
+
+# Phase 3 LLM Guardrail & Classification
+# Used in production mode (MOCK_LLM=False) to call the air-gapped vLLM server.
+# vLLM exposes an OpenAI-compatible API, so we use the standard openai package.
+openai>=1.0.0

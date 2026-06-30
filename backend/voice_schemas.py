@@ -86,6 +86,17 @@ class VoiceConfirmResponse(BaseModel):
     prompt_text: str
 
 
+class VoiceConfirmAudioResponse(BaseModel):
+    """Response from POST /api/voice/confirm-audio."""
+    session_id: str
+    state: str
+    recognized_text: str
+    confirmed: Optional[bool] = None   # True=yes, False=no, None=unclear
+    prompt_text: str
+    stt_language: Optional[str] = None
+    stt_processing_time_ms: float = 0.0
+
+
 class VoiceCandidateApp(BaseModel):
     """Candidate application in complaint classification result."""
     application_id: int

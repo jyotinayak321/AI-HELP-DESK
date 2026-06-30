@@ -35,7 +35,7 @@ operators = [
 ]
 
 admins = [
-    {"user": "ADM-20001", "pass": "pass_afnet"},
+    {"user": "ADM-20001", "pass": "pass_company"},
     {"user": "ADM-20002", "pass": "pass_hrms"},
     {"user": "ADM-20003", "pass": "pass_leave"},
     {"user": "ADM-20004", "pass": "pass_travel"},
@@ -47,7 +47,7 @@ admins = [
 for op in operators:
     realm["users"].append({
         "username": op["user"],
-        "email": f"{op['user'].lower()}@afnet.local",
+        "email": f"{op['user'].lower()}@company.local",
         "firstName": "Operator",
         "lastName": op["user"].split("-")[1],
         "enabled": True,
@@ -58,7 +58,7 @@ for op in operators:
 for ad in admins:
     realm["users"].append({
         "username": ad["user"],
-        "email": f"{ad['user'].lower()}@afnet.local",
+        "email": f"{ad['user'].lower()}@company.local",
         "firstName": "Admin",
         "lastName": ad["user"].split("-")[1],
         "enabled": True,
