@@ -205,14 +205,15 @@ def _build_extract_svc_system_prompt() -> str:
 Your task is to extract the caller's service number from the given STT transcript.
 
 Rules:
-1. The service number format is exactly 3 letters followed by at least 1 digit (e.g. "ABC1", "SVC12345", "XYZ99").
-2. The user might use the NATO phonetic military alphabet to spell out the letters (e.g., "Alpha Bravo Charlie 1" means "ABC1"). You must seamlessly translate phonetic alphabets into their corresponding single letters.
-3. Ignore all conversational filler, background noise, or self-corrections. If the user corrects themselves, extract the final intended service number.
-4. You must format the extracted service number exactly with NO spaces or dashes.
-5. If no valid service number can be identified in the text, return null.
+1. The service number format is exactly 3 digits followed by 1 letter (e.g. "123A", "456B", "999Z").
+2. The user might use the NATO phonetic military alphabet to spell out the letter (e.g., "1 2 3 Alpha" means "123A"). You must seamlessly translate phonetic alphabets into their corresponding single letters.
+3. The Speech-to-Text engine might transcribe numbers or letters in Hindi/Devanagari phonetics (e.g., "वान टू थ्री एक्स" or "Ek do teen A"). You MUST seamlessly translate these phonetic numbers and letters back into English digits and letters (e.g., "वान" -> "1", "एक्स" -> "X").
+4. Ignore all conversational filler, background noise, or self-corrections. If the user corrects themselves, extract the final intended service number.
+5. You must format the extracted service number exactly with NO spaces or dashes.
+6. If no valid service number can be identified in the text, return null.
 
 You MUST respond with ONLY a valid JSON object in this exact format:
-{"service_number": "ABC1"}
+{"service_number": "123A"}
 OR
 {"service_number": null}
 
@@ -225,8 +226,19 @@ def extract_service_number(raw_text: str) -> Optional[str]:
     if settings.MOCK_LLM:
         logger.info("[LLM MOCK] extract_service_number called.")
         import re
-        cleaned = raw_text.upper().replace(" ", "").replace("-", "")
-        match = re.search(r'[A-Z]{3}[0-9]+', cleaned)
+        
+        # Super basic mock translation for Hindi numbers for local testing
+        translations = {
+            "वान": "1", "टू": "2", "थ्री": "3", "फोर": "4", "फाइव": "5",
+            "सिक्स": "6", "सेवन": "7", "एट": "8", "नाइन": "9", "जीरो": "0",
+            "एक्स": "X", "ए": "A", "बी": "B", "सी": "C"
+        }
+        mock_text = raw_text
+        for hindi, eng in translations.items():
+            mock_text = mock_text.replace(hindi, eng)
+            
+        cleaned = mock_text.upper().replace(" ", "").replace("-", "")
+        match = re.search(r'\d{3}[A-Z]', cleaned)
         return match.group(0) if match else None
 
     logger.info("[LLM] Calling vLLM to extract service number.")
@@ -241,7 +253,7 @@ def extract_service_number(raw_text: str) -> Optional[str]:
             
         import re
         svc_no = str(svc_no).upper().replace(" ", "").replace("-", "")
-        if re.match(r'^[A-Z]{3}[0-9]+$', svc_no):
+        if re.match(r'^\d{3}[A-Z]$', svc_no):
             return svc_no
         return None
     except Exception as e:
@@ -302,6 +314,7 @@ You MUST respond with ONLY a valid JSON object in this exact format:
 {{"fault_type": "<one of the valid fault types>", "severity": "<one of the valid severities>"}}
 
 Do NOT include any explanation, markdown, or text outside of the JSON object."""
+
 
 
 def predict_fault_and_severity(complaint_text: str) -> dict:

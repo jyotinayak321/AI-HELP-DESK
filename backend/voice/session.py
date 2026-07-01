@@ -248,7 +248,8 @@ class VoiceSessionManager:
                 SessionState.ERROR,
             },
             SessionState.OPERATOR_FALLBACK: {
-                SessionState.OPERATOR_REVIEW,             # Manual input override
+                SessionState.OPERATOR_REVIEW,             # Legacy override
+                SessionState.CAPTURING_COMPLAINT,         # After successful manual entry of service number
                 SessionState.CAPTURING_SERVICE_NUMBER,    # Retry with voice
                 SessionState.ERROR,
             },

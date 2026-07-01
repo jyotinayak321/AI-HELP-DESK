@@ -779,7 +779,7 @@ def voice_fallback(
 
     session_manager.transition(
         request.session_id,
-        SessionState.OPERATOR_REVIEW,
+        SessionState.CAPTURING_COMPLAINT,
         service_no=service_no,
         complainant_name=request.complainant_name,
         complainant_unit=request.complainant_unit,
@@ -789,7 +789,7 @@ def voice_fallback(
     # Now proceed — operator can either type the complaint or record it
     return VoiceFallbackResponse(
         session_id=request.session_id,
-        state=SessionState.OPERATOR_REVIEW.value,
+        state=SessionState.CAPTURING_COMPLAINT.value,
         service_no=service_no,
         prompt_text=get_prompt_text("ask_complaint"),
     )

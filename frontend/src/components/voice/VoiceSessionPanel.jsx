@@ -235,6 +235,10 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
              complainant_unit: '',
              complainant_rank: ''
            }, ttsUrl);
+        } else if (res.data.state === 'CAPTURING_COMPLAINT') {
+           // If they speak silence, backend returns CAPTURING_COMPLAINT
+           // We must dynamically play the returned promptText ("No speech detected...")
+           playAudio(`http://127.0.0.1:8000/api/voice/tts?text=${encodeURIComponent(res.data.prompt_text)}`);
         }
       }
     } catch (err) {

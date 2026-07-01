@@ -121,7 +121,6 @@ DYNAMIC_TEMPLATES = {
 
     # Classification summary for operator
     "classification_summary": (
-        "Complaint: {complaint_text}. "
         "Predicted application: {application_name}. "
         "Fault type: {fault_type}. "
         "Severity: {severity}."

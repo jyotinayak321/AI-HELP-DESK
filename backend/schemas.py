@@ -161,6 +161,7 @@ class IntakeResponse(BaseModel):
     Satisfies R-13 (Operator reviews before ticket creation).
     """
     intake_id: int
+    corrected_text: Optional[str] = None
     is_repeat_caller: bool = False
     potential_duplicates: list[DuplicateInfo] = Field(default_factory=list)
     fault_type_proposal: str = Field(..., examples=["login/access"])

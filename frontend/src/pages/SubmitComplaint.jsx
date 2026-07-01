@@ -17,8 +17,6 @@ function SubmitComplaint() {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
-  // Issue 3: separate state for "voice complaint only" after manual service-no entry
-  const [voiceComplaintMode, setVoiceComplaintMode] = useState(false);
 
   function handleChange(e) {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -45,6 +43,12 @@ function SubmitComplaint() {
         operator_id: 'system',
       };
       const res = await submitIntake(payload);
+      
+      // Use the LLM-corrected text returned from the backend (if any)
+      if (res.data.corrected_text) {
+        payload.raw_text = res.data.corrected_text;
+      }
+
       navigate('/classify', { state: { intakeResponse: res.data, originalForm: payload } });
     } catch (e) {
       setError(e.response?.data?.detail || e.message || 'Intake failed');
@@ -54,11 +58,7 @@ function SubmitComplaint() {
   }
 
   function handleVoiceClassificationComplete(intakeResponse, voiceForm, ttsUrl) {
-    // Merge manually-entered service number if coming from voiceComplaintMode
-    const merged = voiceComplaintMode
-      ? { ...voiceForm, complainant_service_no: form.complainant_service_no }
-      : voiceForm;
-    navigate('/classify', { state: { intakeResponse, originalForm: merged, ttsUrl } });
+    navigate('/classify', { state: { intakeResponse, originalForm: voiceForm, ttsUrl } });
   }
 
   if (loading) return <LoadingSpinner text="AI classification chal rahi hai..." />;
@@ -68,7 +68,10 @@ function SubmitComplaint() {
       
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '-8px' }}>
         <button 
-          onClick={() => setIsVoiceMode(!isVoiceMode)}
+          onClick={() => {
+            setIsVoiceMode(!isVoiceMode);
+            setError(null);
+          }}
           style={{
             background: isVoiceMode ? '#f1f5f9' : '#e0f2fe',
             color: isVoiceMode ? '#475569' : '#0284c7',
@@ -118,52 +121,26 @@ function SubmitComplaint() {
           <div style={card}>
             <div style={cardTitle}>Complaint Description</div>
 
-            {voiceComplaintMode && form.complainant_service_no.trim() ? (
-              // Voice Panel in complaint-only mode
-              <VoiceSessionPanel
-                onClassificationComplete={handleVoiceClassificationComplete}
-                onCancel={() => setVoiceComplaintMode(false)}
-              />
-            ) : (
-              <>
-                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
-                  English, Hindi, ya Hinglish — jo bhi operator type kare
-                </div>
-                <textarea name="raw_text" value={form.raw_text} onChange={handleChange}
-                  placeholder="e.g. Mera login nahi ho raha HRMS mein — kal se same problem chal rahi hai..."
-                  rows={6} style={{ ...inputStyle, resize: 'vertical', lineHeight: '1.6' }} />
-
-                {/* Issue 3: Switch to voice for complaint if service number is already filled */}
-                {form.complainant_service_no.trim() && (
-                  <button
-                    onClick={() => setVoiceComplaintMode(true)}
-                    style={{
-                      marginTop: '10px',
-                      background: '#e0f2fe', color: '#0284c7',
-                      border: '1px solid #bae6fd',
-                      padding: '8px 16px', borderRadius: '20px',
-                      fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-                    }}
-                  >
-                    🎙️ Use Voice for Complaint
-                  </button>
-                )}
-              </>
-            )}
+            <>
+              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
+                English, Hindi, ya Hinglish — jo bhi operator type kare
+              </div>
+              <textarea name="raw_text" value={form.raw_text} onChange={handleChange}
+                placeholder="e.g. Mera login nahi ho raha HRMS mein — kal se same problem chal rahi hai..."
+                rows={6} style={{ ...inputStyle, resize: 'vertical', lineHeight: '1.6' }} />
+            </>
           </div>
 
-          {!voiceComplaintMode && (
-            <button onClick={handleSubmit}
-              disabled={!form.raw_text.trim() || !form.complainant_service_no.trim()}
-              style={{
-                background: '#185FA5', color: '#fff', border: 'none',
-                borderRadius: '8px', padding: '10px 24px',
-                fontSize: '14px', fontWeight: 500, cursor: 'pointer',
-                opacity: (!form.raw_text.trim() || !form.complainant_service_no.trim()) ? 0.5 : 1,
-              }}>
-              Classify Complaint →
-            </button>
-          )}
+          <button onClick={handleSubmit}
+            disabled={!form.raw_text.trim() || !form.complainant_service_no.trim()}
+            style={{
+              background: '#185FA5', color: '#fff', border: 'none',
+              borderRadius: '8px', padding: '10px 24px',
+              fontSize: '14px', fontWeight: 500, cursor: 'pointer',
+              opacity: (!form.raw_text.trim() || !form.complainant_service_no.trim()) ? 0.5 : 1,
+            }}>
+            Classify Complaint →
+          </button>
         </>
       )}
 

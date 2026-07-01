@@ -117,22 +117,7 @@ def create_intake(
     """
 
     # -----------------------------------------------------------------
-    # 1a. Save the raw complaint to complaint_intake table
-    # -----------------------------------------------------------------
-    intake = Intake(
-        raw_text=request.raw_text,
-        operator_id=current_user.service_no,
-        complainant_service_no=request.complainant_service_no,
-        complainant_name=request.complainant_name,
-        complainant_unit=request.complainant_unit,
-        complainant_rank=request.complainant_rank,
-    )
-    session.add(intake)
-    session.commit()
-    session.refresh(intake)
-
-    # -----------------------------------------------------------------
-    # 1b. LLM GUARDRAIL — Verify language + fix STT errors
+    # 1a. LLM GUARDRAIL — Verify language + fix STT errors
     # -----------------------------------------------------------------
     guardrail_result = verify_and_correct_text(request.raw_text)
     if guardrail_result["status"] == "rejected":
@@ -142,6 +127,21 @@ def create_intake(
         )
     # Use the LLM-corrected text for the rest of the pipeline
     complaint_text = guardrail_result.get("corrected_text", request.raw_text)
+
+    # -----------------------------------------------------------------
+    # 1b. Save the CORRECTED complaint to complaint_intake table
+    # -----------------------------------------------------------------
+    intake = Intake(
+        raw_text=complaint_text,
+        operator_id=current_user.service_no,
+        complainant_service_no=request.complainant_service_no,
+        complainant_name=request.complainant_name,
+        complainant_unit=request.complainant_unit,
+        complainant_rank=request.complainant_rank,
+    )
+    session.add(intake)
+    session.commit()
+    session.refresh(intake)
 
     # -----------------------------------------------------------------
     # 1c. AI PIPELINE — Call Team B's functions
@@ -262,6 +262,7 @@ def create_intake(
 
     return IntakeResponse(
         intake_id=intake.id,
+        corrected_text=complaint_text,
         is_repeat_caller=is_repeat,
         potential_duplicates=potential_duplicates,
         fault_type_proposal=fault_type,
