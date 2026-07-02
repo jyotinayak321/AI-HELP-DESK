@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-
+import { useVadStream } from '../../hooks/useVadStream';
 /**
  * VoiceRecorder Component
  * Handles microphone capture using MediaRecorder API.
@@ -7,6 +7,19 @@ import React, { useState, useRef, useEffect } from 'react';
  */
 function VoiceRecorder({ onRecordingComplete, onRecordingStart, isProcessing = false }) {
   const [isRecording, setIsRecording] = useState(false);
+  const { vadStatus, startVadMonitoring, stopVadMonitoring } = useVadStream({
+    onSpeechStarted: () => {
+      console.log('VAD: user has started speaking');
+    },
+    onEndOfSpeech: () => {
+      console.log('VAD: end of speech detected â€” auto-stopping');
+      stopRecording(); // â† ye function already file me hai
+    },
+    onTimeout: () => {
+      console.log('VAD: timeout â€” no speech detected');
+      stopRecording();
+    },
+  });
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const streamRef = useRef(null);
@@ -53,6 +66,7 @@ function VoiceRecorder({ onRecordingComplete, onRecordingStart, isProcessing = f
 
       mediaRecorder.start();
       setIsRecording(true);
+      startVadMonitoring(stream);
     } catch (err) {
       console.error('Error accessing microphone:', err);
       alert('Microphone access denied or unavailable. Please check permissions.');
@@ -63,6 +77,7 @@ function VoiceRecorder({ onRecordingComplete, onRecordingStart, isProcessing = f
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+      stopVadMonitoring(); // NAYA â€” VAD WebSocket bhi band karo
     }
   };
 
@@ -87,7 +102,7 @@ function VoiceRecorder({ onRecordingComplete, onRecordingStart, isProcessing = f
             </div>
           ) : (
             <button onClick={startRecording} style={startBtnStyle}>
-              🎤 Start Recording
+              ðŸŽ¤ Start Recording
             </button>
           )}
         </div>
