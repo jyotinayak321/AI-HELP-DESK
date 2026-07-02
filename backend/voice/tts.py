@@ -96,22 +96,16 @@ class TextToSpeechEngine:
             logger.warning("Piper init failed: %s", exc)
 
     def _try_init_sapi5(self):
-        """Attempt to initialise Windows SAPI5 via pyttsx3."""
+        """Attempt to check if pyttsx3 is available for SAPI5."""
         try:
             import pyttsx3  # type: ignore
-
-            engine = pyttsx3.init("sapi5")
-            # Configure voice properties
-            engine.setProperty("rate", 150)   # Words per minute
-            engine.setProperty("volume", 1.0)
-            self._pyttsx_engine = engine
+            # Just test importing and setting backend. Do not initialize on main thread.
             self._backend = "sapi5"
-            logger.info("TTS backend: Windows SAPI5 (pyttsx3)")
-
+            logger.info("TTS backend: Windows SAPI5 (pyttsx3) is available")
         except ImportError:
             logger.info("pyttsx3 not installed; skipping SAPI5 backend.")
         except Exception as exc:
-            logger.warning("SAPI5 init failed: %s", exc)
+            logger.warning("SAPI5 check failed: %s", exc)
 
     # ------------------------------------------------------------------
     # Text normalisation for reliable read-back
@@ -188,23 +182,29 @@ class TextToSpeechEngine:
         except Exception as exc:
             logger.error("Piper synthesis failed: %s", exc, exc_info=True)
             # Try SAPI5 fallback
-            if self._pyttsx_engine is None:
-                self._try_init_sapi5()
-            if self._pyttsx_engine is not None:
-                return self._synthesise_sapi5(text)
-            return b""
+            return self._synthesise_sapi5(text)
 
     def _synthesise_sapi5(self, text: str) -> bytes:
-        """Generate WAV audio via Windows SAPI5 (pyttsx3)."""
+        """Generate WAV audio via Windows SAPI5 (pyttsx3) safely in a thread."""
+        import pythoncom
+        import pyttsx3
         tmp_path = None
         try:
+            pythoncom.CoInitialize()
+            engine = pyttsx3.init("sapi5")
+            engine.setProperty("rate", 150)
+            engine.setProperty("volume", 1.0)
+
             with tempfile.NamedTemporaryFile(
                 suffix=".wav", delete=False, dir=tempfile.gettempdir()
             ) as tmp:
                 tmp_path = tmp.name
 
-            self._pyttsx_engine.save_to_file(text, tmp_path)
-            self._pyttsx_engine.runAndWait()
+            engine.save_to_file(text, tmp_path)
+            engine.runAndWait()
+
+            # Clean up COM engine object
+            del engine
 
             with open(tmp_path, "rb") as f:
                 return f.read()

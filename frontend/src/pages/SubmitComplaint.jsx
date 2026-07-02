@@ -27,9 +27,9 @@ function SubmitComplaint() {
       setError('Complaint text aur service number dono required hain.');
       return;
     }
-    const svcPattern = /^\d{3}[a-zA-Z]$/;
+    const svcPattern = /^\d{5}$/;
     if (!svcPattern.test(form.complainant_service_no.trim())) {
-      setError('Service number must be exactly 3 digits followed by 1 letter (e.g., 123A).');
+      setError('Service number must be exactly 5 digits (e.g., 12345).');
       return;
     }
     setLoading(true); setError(null);
@@ -85,64 +85,64 @@ function SubmitComplaint() {
 
       {error && <ErrorMessage message={error} />}
 
-      {isVoiceMode ? (
+
+      {isVoiceMode && (
         <VoiceSessionPanel 
           onClassificationComplete={handleVoiceClassificationComplete}
           onCancel={() => setIsVoiceMode(false)}
         />
-      ) : (
-        <>
-          <div style={card}>
-            <div style={cardTitle}>Complainant Details</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
-              <div>
-                <label style={labelStyle}>Service Number *</label>
-                <input name="complainant_service_no" value={form.complainant_service_no}
-                  onChange={handleChange} placeholder="e.g. 2893456P" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Name (optional)</label>
-                <input name="complainant_name" value={form.complainant_name}
-                  onChange={handleChange} placeholder="Complainant ka naam" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Unit (optional)</label>
-                <input name="complainant_unit" value={form.complainant_unit}
-                  onChange={handleChange} placeholder="e.g. Admin Wing" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Rank (optional)</label>
-                <input name="complainant_rank" value={form.complainant_rank}
-                  onChange={handleChange} placeholder="e.g. Sergeant" style={inputStyle} />
-              </div>
+      )}
+
+      <div style={{ display: isVoiceMode ? 'none' : 'block' }}>
+        <div style={card}>
+          <div style={cardTitle}>Complainant Details</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+            <div>
+              <label style={labelStyle}>Service Number *</label>
+              <input name="complainant_service_no" value={form.complainant_service_no}
+                onChange={handleChange} placeholder="e.g. 12345" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Name (optional)</label>
+              <input name="complainant_name" value={form.complainant_name}
+                onChange={handleChange} placeholder="Complainant ka naam" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Unit (optional)</label>
+              <input name="complainant_unit" value={form.complainant_unit}
+                onChange={handleChange} placeholder="e.g. Admin Wing" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Rank (optional)</label>
+              <input name="complainant_rank" value={form.complainant_rank}
+                onChange={handleChange} placeholder="e.g. Sergeant" style={inputStyle} />
             </div>
           </div>
+        </div>
 
-          <div style={card}>
-            <div style={cardTitle}>Complaint Description</div>
+        <div style={card}>
+          <div style={cardTitle}>Complaint Description</div>
+          <>
+            <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
+              English, Hindi, ya Hinglish — jo bhi operator type kare
+            </div>
+            <textarea name="raw_text" value={form.raw_text} onChange={handleChange}
+              placeholder="e.g. Mera login nahi ho raha HRMS mein — kal se same problem chal rahi hai..."
+              rows={6} style={{ ...inputStyle, resize: 'vertical', lineHeight: '1.6' }} />
+          </>
+        </div>
 
-            <>
-              <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
-                English, Hindi, ya Hinglish — jo bhi operator type kare
-              </div>
-              <textarea name="raw_text" value={form.raw_text} onChange={handleChange}
-                placeholder="e.g. Mera login nahi ho raha HRMS mein — kal se same problem chal rahi hai..."
-                rows={6} style={{ ...inputStyle, resize: 'vertical', lineHeight: '1.6' }} />
-            </>
-          </div>
-
-          <button onClick={handleSubmit}
-            disabled={!form.raw_text.trim() || !form.complainant_service_no.trim()}
-            style={{
-              background: '#185FA5', color: '#fff', border: 'none',
-              borderRadius: '8px', padding: '10px 24px',
-              fontSize: '14px', fontWeight: 500, cursor: 'pointer',
-              opacity: (!form.raw_text.trim() || !form.complainant_service_no.trim()) ? 0.5 : 1,
-            }}>
-            Classify Complaint →
-          </button>
-        </>
-      )}
+        <button onClick={handleSubmit}
+          disabled={!form.raw_text.trim() || !form.complainant_service_no.trim()}
+          style={{
+            background: '#185FA5', color: '#fff', border: 'none',
+            borderRadius: '8px', padding: '10px 24px',
+            fontSize: '14px', fontWeight: 500, cursor: 'pointer',
+            opacity: (!form.raw_text.trim() || !form.complainant_service_no.trim()) ? 0.5 : 1,
+          }}>
+          Classify Complaint →
+        </button>
+      </div>
 
     </div>
   );

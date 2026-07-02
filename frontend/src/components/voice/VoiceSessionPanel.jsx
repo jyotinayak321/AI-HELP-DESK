@@ -23,7 +23,10 @@ import TranscriptPanel from './TranscriptPanel';
  *  - `isListening` only controls whether audio chunks are forwarded to the WS.
  *    It does NOT tear down or re-create the WS.
  */
-function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
+function VoiceSessionPanel({
+  onClassificationComplete,
+  onCancel
+}) {
   const { serviceNo } = useCurrentUser();
 
   const [isListening, setIsListening] = useState(false);
@@ -49,6 +52,7 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
   const isMounted = useRef(true);
   const playbackIdRef = useRef(0);
   const confirmSequenceRef = useRef([]);
+  const confirmUrlsRef = useRef([]);
   const audioPlayerRef = useRef(new Audio());
 
   // WebSocket / Audio pipeline refs — NEVER recreated on state change
@@ -78,7 +82,14 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
 
   // ── Open WebSocket and AudioContext exactly once ────────────────────────
   const openStreamingPipeline = useCallback((sessionId, operatorId) => {
-    if (wsRef.current) return; // Already open
+    if (wsRef.current) {
+      // If a websocket is already open for this exact session, do nothing.
+      if (wsRef.current.url.includes(sessionId)) return;
+      
+      // Otherwise, the session ID changed (e.g. React StrictMode double render), so close the stale one.
+      wsRef.current.close();
+      wsRef.current = null;
+    }
 
     const wsUrl = `ws://127.0.0.1:8000/api/voice/stream?session_id=${sessionId}&operator_id=${operatorId}`;
     const ws = new WebSocket(wsUrl);
@@ -87,7 +98,9 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
     ws.onopen = async () => {
       console.log('[VAD] WebSocket connected');
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
+        });
         micStreamRef.current = stream;
 
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -120,6 +133,11 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
 
       if (msg.event === 'speech_started') {
         setVadState('speaking');
+        // BARGE-IN: Interrupt the AI immediately if the user starts speaking
+        playbackIdRef.current++;
+        if (audioPlayerRef.current) {
+          audioPlayerRef.current.pause();
+        }
       } else if (msg.event === 'speech_ended') {
         setVadState('processing');
       } else if (msg.event === 'result') {
@@ -140,8 +158,10 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
     ws.onclose = (ev) => {
       console.warn('[VAD] WebSocket closed:', ev.code, ev.reason);
       wsRef.current = null;
-      // Attempt reconnect only if the session is still active
-      if (isMounted.current && sessionId) {
+      // Only reconnect for unexpected closures (code 1006 = abnormal, no code set from server)
+      // Do NOT reconnect for intentional closes (code 1000 = normal) or auth errors (4000/4001)
+      const isIntentionalClose = ev.code === 1000 || ev.code === 4000 || ev.code === 4001;
+      if (isMounted.current && sessionId && !isIntentionalClose) {
         setTimeout(() => {
           if (isMounted.current && !wsRef.current) {
             console.log('[VAD] Reconnecting...');
@@ -280,12 +300,11 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         state: res.data.state,
         promptText: res.data.prompt_text,
       }));
-      playAudio(`http://127.0.0.1:8000/api/voice/prompt/greeting`).then(() => {
-        if (isMounted.current) {
-          setIsListening(true);
-          setIsProcessing(false);
-        }
-      });
+      if (isMounted.current) {
+        setIsListening(true);
+        setIsProcessing(false);
+      }
+      playAudio(`http://127.0.0.1:8000/api/voice/prompt/greeting`);
     } catch (err) {
       console.error(err);
       if (isMounted.current) {
@@ -367,13 +386,16 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
     }
 
     if (msg.audio_urls && msg.audio_urls.length > 0) {
-      setIsListening(false);
-      setIsProcessing(true);
+      // Keep listening open so barge-in can happen
+      setIsListening(true);
+      setIsProcessing(false);
       const absoluteUrls = msg.audio_urls.map(u => `http://127.0.0.1:8000${u}`);
 
       const afterPlay = (blobs) => {
         if (!isMounted.current) return;
-        if (msg.state === 'CONFIRMING_SERVICE_NUMBER') confirmSequenceRef.current = blobs;
+        if (msg.state === 'CONFIRMING_SERVICE_NUMBER') {
+          confirmSequenceRef.current = blobs;
+        }
         
         // Do not resume listening if we are in fallback - the user must type
         if (msg.state === 'OPERATOR_FALLBACK') {
@@ -383,6 +405,11 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         }
         setIsProcessing(false);
       };
+
+      // Store the confirmation URLs BEFORE starting playback so Replay works immediately
+      if (msg.state === 'CONFIRMING_SERVICE_NUMBER') {
+        confirmUrlsRef.current = absoluteUrls;
+      }
 
       playSequential(absoluteUrls).then(afterPlay);
     } else {
@@ -447,6 +474,7 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
             `${BASE}/prompt/is_that_correct`,
             `${BASE}/prompt/confirm_yes_no`,
           ];
+          confirmUrlsRef.current = sequence;
           playSequential(sequence).then(blobs => {
             if (isMounted.current) {
               confirmSequenceRef.current = blobs;
@@ -532,34 +560,34 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
   };
 
   const handleReplayServiceNumber = () => {
-    const blobs = confirmSequenceRef.current.filter(Boolean);
-    if (!blobs.length) return;
+    if (!confirmUrlsRef.current || !confirmUrlsRef.current.length) {
+      console.warn('[Replay] No confirmation URLs stored yet.');
+      return;
+    }
+    // Stop whatever is currently playing before replaying
+    stopAllAudio();
     setIsListening(false);
-    const player = audioPlayerRef.current;
-    let idx = 0;
-    const playNext = () => {
-      if (idx >= blobs.length) { setIsListening(true); return; }
-      player.src = blobs[idx++];
-      player.onended = playNext;
-      player.play().catch(e => { console.error(e); setIsListening(true); });
-    };
-    player.pause();
-    playNext();
+    playSequential(confirmUrlsRef.current).then(() => {
+      if (isMounted.current) {
+        setIsListening(true);
+      }
+    });
   };
 
   const handleFallbackSubmit = async () => {
     const raw = fallbackData.service_no.trim();
     if (!raw) { alert('Please enter a service number.'); return; }
-    // Accept: 2–8 digits followed by exactly 1 letter (e.g. 345O, 2893456P)
-    const svcPattern = /^\d{2,8}[a-zA-Z]$/;
+    // Accept: exactly 5 digits (e.g. 12345)
+    const svcPattern = /^\d{5}$/;
     if (!svcPattern.test(raw)) {
-      alert('Service number must be digits followed by one letter (e.g. 345O or 2893456P).');
+      alert('Service number must be exactly 5 digits (e.g. 12345).');
       return;
     }
+
     setIsProcessing(true);
     setIsListening(false);
     try {
-      const res = await submitFallback(session.id, fallbackData);
+      const res = await submitFallback(session.id, { service_no: raw });
       setSession(prev => ({
         ...prev,
         state: res.data.state,
@@ -567,14 +595,11 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         serviceNumber: res.data.service_no,
         transcript: '',
       }));
-      playAudio(`http://127.0.0.1:8000/api/voice/prompt/ask_complaint`).then(() => {
-        if (isMounted.current) { setIsListening(true); setIsProcessing(false); }
-      }).catch(() => {
-        // Even if audio fails, resume listening so user can speak the complaint
-        if (isMounted.current) { setIsListening(true); setIsProcessing(false); }
-      });
+      if (isMounted.current) { setIsListening(true); setIsProcessing(false); }
+      playAudio(`http://127.0.0.1:8000/api/voice/prompt/ask_complaint`).catch(() => {});
     } catch (err) {
       console.error(err);
+      alert("Fallback Error: " + (err.response?.data?.detail || err.message));
       if (isMounted.current) setIsProcessing(false);
     }
   };
@@ -594,9 +619,8 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
     setEditedTranscript('');
     // session.state is already OPERATOR_REVIEW on backend — VAD accepts re-recording in that state
     setSession(prev => ({ ...prev, promptText: 'Please describe your complaint clearly.' }));
-    playAudio('http://127.0.0.1:8000/api/voice/prompt/ask_complaint').then(() => {
-      if (isMounted.current) { setIsListening(true); setIsProcessing(false); }
-    });
+    if (isMounted.current) { setIsListening(true); setIsProcessing(false); }
+    playAudio('http://127.0.0.1:8000/api/voice/prompt/ask_complaint');
   };
 
   // ── Render ─────────────────────────────────────────────────────────────
@@ -663,7 +687,7 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
             <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#e24b4a' }}>Maximum retries exceeded. Please enter service number manually.</p>
             <input
               type="text"
-              placeholder="e.g. 345O or 2893456P"
+              placeholder="e.g. 12345"
               value={fallbackData.service_no}
               onChange={e => setFallbackData(prev => ({ ...prev, service_no: e.target.value }))}
               style={inputStyle}

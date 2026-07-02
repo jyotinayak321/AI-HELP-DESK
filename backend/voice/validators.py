@@ -167,8 +167,8 @@ def normalise_service_number(raw_text: str) -> str:
 
     raw_joined = "".join(result_chars).upper().strip("-")
     
-    # Search for 3 digits followed by 1 letter in the joined string
-    match = re.search(r'[0-9]{3}[A-Z]', raw_joined)
+    # Search for 5 digits in the joined string
+    match = re.search(r'[0-9]{5}', raw_joined)
     if match:
         normalised = match.group(0)
     else:
@@ -206,7 +206,7 @@ def _build_extract_svc_system_prompt() -> str:
     return """You are a precise data extraction assistant for an Enterprise IT Help Desk.
 Your ONLY task is to extract the caller's service number from an STT (speech-to-text) transcript.
 
-SERVICE NUMBER FORMAT: Exactly 3 digits followed by exactly 1 uppercase letter. Examples: "123A", "457F", "999Z".
+SERVICE NUMBER FORMAT: Exactly 5 digits. Examples: "12345", "98765", "00123".
 
 DIGIT RECOGNITION — spoken digits must be converted to numerals:
   - English words:  "zero/oh"=0, "one/won"=1, "two/to/too"=2, "three/tree"=3, "four/for"=4,
@@ -306,12 +306,12 @@ def validate_service_number(raw_stt_text: str) -> ValidationResult:
 
 
 
-    if not re.match(r"^[0-9]{3}[A-Z]$", normalised):
+    if not re.match(r"^[0-9]{5}$", normalised):
         return ValidationResult(
             is_valid=False,
             normalised=normalised,
             raw_input=raw_stt_text,
-            error_reason="Does not match expected service number pattern (3 digits followed by 1 letter).",
+            error_reason="Does not match expected service number pattern (exactly 5 digits).",
         )
 
     logger.info("Service number validated: '%s' → '%s'", raw_stt_text, normalised)

@@ -205,15 +205,15 @@ def _build_extract_svc_system_prompt() -> str:
 Your task is to extract the caller's service number from the given STT transcript.
 
 Rules:
-1. The service number format is exactly 3 digits followed by 1 letter (e.g. "123A", "456B", "999Z").
-2. The user might use the NATO phonetic military alphabet to spell out the letter (e.g., "1 2 3 Alpha" means "123A"). You must seamlessly translate phonetic alphabets into their corresponding single letters.
-3. The Speech-to-Text engine might transcribe numbers or letters in Hindi/Devanagari phonetics (e.g., "वान टू थ्री एक्स" or "Ek do teen A"). You MUST seamlessly translate these phonetic numbers and letters back into English digits and letters (e.g., "वान" -> "1", "एक्स" -> "X").
+1. The service number format is exactly 5 digits (e.g. "12345", "45678", "00123").
+2. The user might use the NATO phonetic military alphabet to spell out letters, but since the format is strictly digits, any letters spoken are likely mistakes or irrelevant unless they map to digits (e.g. 'O' as '0').
+3. The Speech-to-Text engine might transcribe numbers in Hindi/Devanagari phonetics (e.g., "वान टू थ्री"). You MUST seamlessly translate these phonetic numbers back into English digits.
 4. Ignore all conversational filler, background noise, or self-corrections. If the user corrects themselves, extract the final intended service number.
 5. You must format the extracted service number exactly with NO spaces or dashes.
 6. If no valid service number can be identified in the text, return null.
 
 You MUST respond with ONLY a valid JSON object in this exact format:
-{"service_number": "123A"}
+{"service_number": "12345"}
 OR
 {"service_number": null}
 

@@ -761,7 +761,7 @@ def voice_fallback(
     """
     Operator manually enters the service number after voice capture
     has failed repeatedly.
-
+    
     Satisfies R-33 (operator fallback after repeated failures).
     """
     session = session_manager.get_session(request.session_id)
@@ -769,13 +769,25 @@ def voice_fallback(
         raise HTTPException(status_code=404, detail="Voice session not found or expired.")
 
     if session.state != SessionState.OPERATOR_FALLBACK:
+        with open("fallback_debug.log", "a") as f:
+            f.write(f"Session state is {session.state.value}, expected OPERATOR_FALLBACK\n")
         raise HTTPException(
             status_code=400,
             detail=f"Fallback only available in OPERATOR_FALLBACK state. Current: {session.state.value}",
         )
+    with open("fallback_debug.log", "a") as f:
+        f.write(f"Fallback SUCCESS for state {session.state.value}\n")
 
     # Store the manually entered data
     service_no = request.service_no.strip().upper()
+
+    # Validate: must be exactly 5 digits
+    import re as _re
+    if not _re.match(r"^\d{5}$", service_no):
+        raise HTTPException(
+            status_code=422,
+            detail="Service number must be exactly 5 digits (e.g. 12345).",
+        )
 
     session_manager.transition(
         request.session_id,
@@ -1200,7 +1212,7 @@ async def run_pipeline_step(session, wav_bytes: bytes, operator_id: str) -> dict
                 "stt_processing_time_ms": result.processing_time_ms
             }
             
-    elif session.state in (SessionState.CAPTURING_COMPLAINT, SessionState.OPERATOR_REVIEW):
+    elif session.state == SessionState.CAPTURING_COMPLAINT:
         try:
             result = stt.transcribe(wav_bytes)
         except Exception as exc:
@@ -1407,6 +1419,19 @@ async def voice_stream(
                     if not latest_session:
                         await websocket.send_json({"event": "error", "message": "Session expired."})
                         return
+
+                    # Ignore stray audio if the user is in a state that requires UI interaction 
+                    # (like reviewing classification or entering fallback data)
+                    if latest_session.state not in (
+                        SessionState.GREETING,
+                        SessionState.CAPTURING_SERVICE_NUMBER,
+                        SessionState.CONFIRMING_SERVICE_NUMBER,
+                        SessionState.CAPTURING_COMPLAINT,
+                    ):
+                        logger.info("VAD: Ignoring audio because session is in state: %s", latest_session.state.value)
+                        detector.reset()
+                        audio_buffer = np.array([], dtype=np.float32)
+                        continue
 
                     try:
                         response_data = await run_pipeline_step(latest_session, wav_bytes, operator_id)

@@ -164,6 +164,9 @@ class VoiceSessionManager:
             if hasattr(session, key):
                 setattr(session, key, value)
 
+        with open("transition_debug.log", "a") as f:
+            f.write(f"[{time.time()}] Session {session_id}: {old_state.value} -> {new_state.value}\n")
+
         logger.info(
             "Session %s: %s → %s",
             session_id, old_state.value, new_state.value,

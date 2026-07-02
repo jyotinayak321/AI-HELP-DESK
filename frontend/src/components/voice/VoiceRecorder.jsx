@@ -58,10 +58,10 @@ function VoiceRecorder({
             </div>
           )}
           {vadState === 'inactive' && (
-            <div style={{ ...activeRecordingStyle, background: '#f1f5f9', border: '1px solid #cbd5e1' }}>
-              <div style={{ ...pulsingDotStyle, background: '#94a3b8', animation: 'none' }}></div>
-              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>
-                AI is speaking (listening paused)...
+            <div style={{ ...activeRecordingStyle, background: '#e6f1fb', border: '1px solid #bae6fd' }}>
+              <div style={{ ...pulsingDotStyle, background: '#185FA5', animation: 'pulse 1.5s infinite' }}></div>
+              <span style={{ fontSize: '13px', color: '#185FA5', fontWeight: 600 }}>
+                Listening (Speak now)...
               </span>
             </div>
           )}
