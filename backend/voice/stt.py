@@ -1,5 +1,5 @@
 """
-voice/stt.py — Speech-to-Text Engine (Phase 2)
+voice/stt.py ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â Speech-to-Text Engine (Phase 2)
 =================================================
 Wraps the faster-whisper library for local, GPU-accelerated,
 multilingual speech recognition.
@@ -82,7 +82,7 @@ class SpeechToTextEngine:
         self._initialised = True
 
         # Resolve model path relative to this file
-        # backend/voice/stt.py → backend/local_models/whisper-medium-ct2
+        # backend/voice/stt.py ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ backend/local_models/whisper-medium-ct2
         current_dir = os.path.dirname(os.path.abspath(__file__))
         self.model_dir = os.path.normpath(
             os.path.join(current_dir, "..", "local_models", f"whisper-{model_size}-ct2")
@@ -99,7 +99,7 @@ class SpeechToTextEngine:
         )
 
     # ------------------------------------------------------------------
-    # Lazy model loading — defers GPU memory allocation until first use
+    # Lazy model loading ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â defers GPU memory allocation until first use
     # ------------------------------------------------------------------
     def _ensure_model(self):
         """Load the model on first transcription request (lazy loading)."""
@@ -166,7 +166,7 @@ class SpeechToTextEngine:
         beam_size : int
             Beam search width.  Higher = more accurate but slower.
         vad_filter : bool
-            Enable Silero VAD to skip silent chunks — reduces hallucination.
+            Enable Silero VAD to skip silent chunks ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â reduces hallucination.
         word_timestamps : bool
             Whether to compute per-word timestamps (slower).
 
@@ -251,6 +251,14 @@ class SpeechToTextEngine:
                     os.unlink(tmp_path)
                 except OSError:
                     pass
+
+            # Release the STT model from RAM after each use.
+            # On low-RAM machines (8GB), keeping this model loaded
+            # permanently competes with the embedder model for memory,
+            # causing the OS to kill the process (silent crash, no traceback).
+            self._model = None
+            import gc
+            gc.collect()
 
     def is_loaded(self) -> bool:
         """Check whether the model has been loaded into GPU memory."""

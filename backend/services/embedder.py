@@ -1,37 +1,31 @@
-import os
+﻿import os
 from typing import List, Optional
 from sentence_transformers import SentenceTransformer
 
+
 class TextEmbedder:
-    """
-    Handles feature extraction for the Intelligent IT Help Desk system,
-    providing language-agnostic embeddings (English, Hindi, Hinglish).
-    """
+    _shared_model = None
+
     def __init__(self):
-        # Dynamically resolve path to the local model relative to this file's location
-        # This file is in backend/services/
-        # Model is in backend/local_models/multilingual-e5-base
         current_dir = os.path.dirname(os.path.abspath(__file__))
         model_dir = os.path.join(current_dir, "..", "local_models", "multilingual-e5-base")
         self.model_path = os.path.normpath(model_dir)
-        
-        # Load model strictly from local storage (air-gapped)
-        self.model = SentenceTransformer(self.model_path)
+
+    @property
+    def model(self):
+        if TextEmbedder._shared_model is None:
+            print(f"[embedder] Loading model from {self.model_path} (first use)...")
+            TextEmbedder._shared_model = SentenceTransformer(self.model_path)
+        return TextEmbedder._shared_model
 
     def get_embedding(self, text: Optional[str]) -> List[float]:
-        # Handle edge cases gracefully to avoid model crashes
         if text is None:
             return [0.0] * 768
-            
+
         cleaned_text = text.strip()
         if not cleaned_text:
             return [0.0] * 768
-            
-        # E5 requires the "query: " prefix for asymmetric retrieval tasks
+
         formatted_text = f"query: {cleaned_text}"
-        
-        # Extract features
         embedding = self.model.encode(formatted_text)
-        
-        # Ensure primitive type compatibility with SQLModel and pgvector
         return embedding.tolist()

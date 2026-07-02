@@ -1,19 +1,19 @@
 """
-voice/audio.py — Audio Preprocessing (Phase 2)
+voice/audio.py - Audio Preprocessing (Phase 2)
 =================================================
 Handles audio format conversion, resampling, silence detection,
 and basic noise reduction to prepare browser-captured audio for
 the STT engine.
 
 Design Decisions:
-  - Browser MediaRecorder typically produces WebM/Opus.  Faster-whisper
+  - Browser MediaRecorder typically produces WebM/Opus. Faster-whisper
     can handle most formats via ffmpeg, but we normalise to 16-bit
     PCM WAV at 16 kHz for maximum compatibility and predictability.
   - Uses pydub (with ffmpeg backend) for format conversion.
   - Falls back to raw passthrough if pydub/ffmpeg is unavailable
     (faster-whisper can still attempt decoding via its own ffmpeg).
   - Silence detection returns True if the audio is below a dBFS
-    threshold — useful for skipping STT on empty recordings.
+    threshold - useful for skipping STT on empty recordings.
 """
 
 import io
@@ -22,7 +22,20 @@ import logging
 import tempfile
 from typing import Optional, Tuple
 
+from pydub import AudioSegment
+FFMPEG_BIN_DIR = r"C:\Users\rajes\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.2-full_build\bin"
+os.environ["PATH"] = FFMPEG_BIN_DIR + os.pathsep + os.environ.get("PATH", "")
+
+from pydub import AudioSegment
+AudioSegment.converter = os.path.join(FFMPEG_BIN_DIR, "ffmpeg.exe")
+AudioSegment.ffprobe = os.path.join(FFMPEG_BIN_DIR, "ffprobe.exe")
+
+from pydub import AudioSegment
+AudioSegment.converter = os.path.join(FFMPEG_BIN_DIR, "ffmpeg.exe")
+AudioSegment.ffprobe = os.path.join(FFMPEG_BIN_DIR, "ffprobe.exe")
+
 logger = logging.getLogger("voice.audio")
+
 
 # Target format for STT engine
 TARGET_SAMPLE_RATE = 16000
@@ -67,7 +80,7 @@ def convert_to_wav(
         wav_bytes = buf.getvalue()
 
         logger.debug(
-            "Audio converted: %s → WAV  (%d → %d bytes, %.1fs)",
+            "Audio converted: %s ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ WAV  (%d ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ %d bytes, %.1fs)",
             source_format, len(audio_bytes), len(wav_bytes),
             len(audio) / 1000,
         )
@@ -75,15 +88,14 @@ def convert_to_wav(
 
     except ImportError:
         logger.warning(
-            "pydub not installed — passing raw audio to STT engine. "
+            "pydub not installed ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â passing raw audio to STT engine. "
             "Install pydub and ffmpeg for reliable format conversion."
         )
         return audio_bytes
 
     except Exception as exc:
-        logger.warning(
-            "Audio conversion failed (%s) — passing raw bytes. Error: %s",
-            source_format, exc,
+        logger.exception(
+            "Audio conversion failed (%s) - passing raw bytes.", source_format
         )
         return audio_bytes
 
@@ -127,7 +139,7 @@ def detect_silence(
         return False
 
     except ImportError:
-        logger.debug("pydub not available — skipping silence detection.")
+        logger.debug("pydub not available ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â skipping silence detection.")
         return False
     except Exception as exc:
         logger.debug("Silence detection failed: %s", exc)
@@ -182,3 +194,47 @@ def detect_format_from_content_type(content_type: str) -> str:
         "audio/m4a":   "mp4",
     }
     return mapping.get(ct, "webm")  # Default to webm (browser default)
+
+import numpy as np
+
+
+class FrameBuffer:
+    """
+    Streaming audio bytes ko fixed-size (512-sample) float32 frames
+    me todta hai ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â VAD ko chahiye exactly is size ka input.
+
+    Usage:
+        buf = FrameBuffer()
+        for chunk_bytes in incoming_websocket_chunks:
+            for frame in buf.add_chunk(chunk_bytes):
+                # frame ab exactly 512 samples ka hai, VAD ko do
+                prob = detector.vad.speech_probability(frame)
+    """
+
+    FRAME_SAMPLES = 512
+
+    def __init__(self):
+        self._leftover = np.array([], dtype=np.float32)
+
+    def add_chunk(self, pcm_bytes: bytes):
+        """
+        Raw 16-bit PCM bytes (mono, 16kHz) do ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ye yield karega
+        har complete 512-sample frame jo ban paya, aur bacha hua
+        agli baar ke liye internally rakh lega.
+        """
+        # 16-bit PCM ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ float32 normalized (-1.0 se 1.0)
+        new_samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        combined = np.concatenate([self._leftover, new_samples])
+
+        num_full_frames = len(combined) // self.FRAME_SAMPLES
+        frames = []
+        for i in range(num_full_frames):
+            start = i * self.FRAME_SAMPLES
+            frames.append(combined[start : start + self.FRAME_SAMPLES])
+
+        # Jo samples bache (frame poora nahi bana), agli baar ke liye rakho
+        self._leftover = combined[num_full_frames * self.FRAME_SAMPLES :]
+        return frames
+
+    def reset(self):
+        self._leftover = np.array([], dtype=np.float32)
