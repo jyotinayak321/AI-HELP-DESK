@@ -189,27 +189,47 @@ class SpeechToTextEngine:
 
             t0 = time.perf_counter()
 
-            segments_gen, info = self._model.transcribe(
-                tmp_path,
-                language=language,
-                beam_size=beam_size,
-                vad_filter=vad_filter,
-                word_timestamps=word_timestamps,
-            )
+            try:
+                segments_gen, info = self._model.transcribe(
+                    tmp_path,
+                    language=language,
+                    beam_size=beam_size,
+                    vad_filter=vad_filter,
+                    word_timestamps=word_timestamps,
+                )
+                
+                # Materialise the generator to collect all segments
+                segments: List[TranscriptionSegment] = []
+                full_text_parts: List[str] = []
 
-            # Materialise the generator to collect all segments
-            segments: List[TranscriptionSegment] = []
-            full_text_parts: List[str] = []
+                for seg in segments_gen:
+                    segments.append(TranscriptionSegment(
+                        text=seg.text.strip(),
+                        start=seg.start,
+                        end=seg.end,
+                        avg_logprob=seg.avg_logprob,
+                        no_speech_prob=seg.no_speech_prob,
+                    ))
+                    full_text_parts.append(seg.text.strip())
+                    
+            except ValueError as e:
+                if "empty sequence" in str(e):
+                    # VAD filtered out all audio chunks because it found no speech.
+                    logger.warning("VAD filtered out all audio. Treating as silent.")
+                    return TranscriptionResult(
+                        text="",
+                        language="en",
+                        language_probability=0.0,
+                        segments=[],
+                        confidence=0.0,
+                        duration_seconds=0.0,
+                        processing_time_ms=round((time.perf_counter() - t0) * 1000, 1),
+                        is_silent=True,
+                    )
+                raise
 
-            for seg in segments_gen:
-                segments.append(TranscriptionSegment(
-                    text=seg.text.strip(),
-                    start=seg.start,
-                    end=seg.end,
-                    avg_logprob=seg.avg_logprob,
-                    no_speech_prob=seg.no_speech_prob,
-                ))
-                full_text_parts.append(seg.text.strip())
+
+
 
             elapsed_ms = (time.perf_counter() - t0) * 1000
             full_text = " ".join(full_text_parts).strip()
@@ -224,7 +244,9 @@ class SpeechToTextEngine:
                 confidence = 0.0
                 avg_no_speech = 1.0
 
-            is_silent = (not full_text) or (avg_no_speech > 0.8)
+            # no_speech_prob is notoriously inaccurate for short clips with trailing silence 
+            # (which our VAD produces). If full_text has content, trust it.
+            is_silent = not full_text
 
             result = TranscriptionResult(
                 text=full_text,

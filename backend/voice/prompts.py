@@ -172,7 +172,7 @@ FALLBACK_TEXT = {
         "Welcome to the AI Help Desk. Please state your service number."
     ),
     "ask_service_number": "Please state your service number.",
-    "ask_complaint": "Please describe your problem. You may start speaking now.",
+    "ask_complaint": "Enter complaint.",
     "retry_service": "Sorry, I could not catch your service number. Please say it again.",
     "fallback_operator": "We were unable to verify your service number. An operator will now assist you.",
     "goodbye": "Thank you. Your ticket has been created. Please note your ticket number.",

@@ -51,7 +51,17 @@ function SubmitComplaint() {
 
       navigate('/classify', { state: { intakeResponse: res.data, originalForm: payload } });
     } catch (e) {
-      setError(e.response?.data?.detail || e.message || 'Intake failed');
+      const detail = e.response?.data?.detail;
+      // Pydantic 422 returns detail as an array of objects [{msg, loc, ...}]
+      let msg = 'Intake failed';
+      if (typeof detail === 'string') {
+        msg = detail;
+      } else if (Array.isArray(detail)) {
+        msg = detail.map(d => d.msg || JSON.stringify(d)).join('; ');
+      } else if (e.message) {
+        msg = e.message;
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }

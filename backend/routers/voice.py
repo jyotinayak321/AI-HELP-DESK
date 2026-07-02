@@ -182,39 +182,7 @@ async def voice_service_number(
     source_format = detect_format_from_content_type(content_type)
     wav_bytes = convert_to_wav(raw_bytes, source_format=source_format)
 
-    # Check for silence
-    if detect_silence(wav_bytes, source_format="wav"):
-        retries = session_manager.increment_svc_retries(session_id)
-
-        if session_manager.should_fallback(session_id):
-            session_manager.transition(session_id, SessionState.OPERATOR_FALLBACK)
-            return VoiceServiceNumberResponse(
-                session_id=session_id,
-                state=SessionState.OPERATOR_FALLBACK.value,
-                recognized_text="",
-                normalised_service_no="",
-                is_valid=False,
-                retries_count=retries,
-                max_retries=MAX_SERVICE_NUMBER_RETRIES,
-                prompt_text=get_prompt_text("fallback_operator"),
-                error_reason="No speech detected. Maximum retries exceeded.",
-            )
-
-        return VoiceServiceNumberResponse(
-            session_id=session_id,
-            state=SessionState.CAPTURING_SERVICE_NUMBER.value,
-            recognized_text="",
-            normalised_service_no="",
-            is_valid=False,
-            retries_count=retries,
-            max_retries=MAX_SERVICE_NUMBER_RETRIES,
-            prompt_text=render_dynamic_prompt(
-                "retry_service_number",
-                attempt=retries,
-                max_attempts=MAX_SERVICE_NUMBER_RETRIES,
-            ),
-            error_reason="No speech detected. Please try again.",
-        )
+    # Removed detect_silence here; frontend VAD already ensures speech activity.
 
     # Run STT
     stt = _get_stt()
@@ -480,15 +448,7 @@ async def voice_confirm_audio(
     source_format = detect_format_from_content_type(content_type)
     wav_bytes = convert_to_wav(raw_bytes, source_format=source_format)
 
-    # Detect silence — prompt to repeat
-    if detect_silence(wav_bytes, source_format="wav"):
-        return VoiceConfirmAudioResponse(
-            session_id=session_id,
-            state=SessionState.CONFIRMING_SERVICE_NUMBER.value,
-            recognized_text="",
-            confirmed=None,
-            prompt_text="No speech detected. Please say Yes or No.",
-        )
+    # Removed detect_silence here; frontend VAD already ensures speech activity.
 
     # Run STT
     stt = _get_stt()
@@ -596,15 +556,7 @@ async def voice_complaint(
     source_format = detect_format_from_content_type(content_type)
     wav_bytes = convert_to_wav(raw_bytes, source_format=source_format)
 
-    # Check for silence
-    if detect_silence(wav_bytes, source_format="wav"):
-        return VoiceComplaintResponse(
-            session_id=session_id,
-            state=session.state.value,
-            transcript="",
-            confidence=0.0,
-            prompt_text="No speech detected. Please describe your complaint again.",
-        )
+    # Removed detect_silence here; frontend VAD already ensures speech activity.
 
     # Run STT
     stt = _get_stt()
@@ -1037,3 +989,28 @@ def voice_prompt(
 
     # Last resort: return the text
     return {"prompt_key": key, "text": fallback_text, "audio_available": False}
+
+
+# =====================================================================
+# 11. GET /voice/tts — Synthesise arbitrary text
+# =====================================================================
+
+@router.get("/tts")
+def voice_tts_arbitrary(
+    text: str,
+    current_user: CurrentUser = Depends(require_operator),
+):
+    """
+    Synthesise an arbitrary string of text into a WAV file.
+    """
+    tts = _get_tts()
+    if tts.is_available():
+        audio_bytes = tts.synthesise(text)
+        if audio_bytes:
+            return Response(
+                content=audio_bytes,
+                media_type="audio/wav",
+                headers={"Content-Disposition": "inline; filename=tts.wav"},
+            )
+
+    return {"text": text, "audio_available": False}

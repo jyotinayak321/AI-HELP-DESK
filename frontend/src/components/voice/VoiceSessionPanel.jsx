@@ -30,19 +30,30 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [fallbackData, setFallbackData] = useState({ service_no: '' });
+  // autoStartTrigger: toggled to a new Date() to tell VoiceRecorder to start listening.
+  const [autoStartTrigger, setAutoStartTrigger] = useState(null);
   const audioPlayerRef = useRef(new Audio());
   // Stores the ordered blob URLs for the service-number confirmation sequence
-  // [heard_as.wav, <tts number>, confirm_yes_no.wav]
-  // so Replay can play them again without any network/TTS calls.
   const confirmSequenceRef = useRef([]);
 
   const isMounted = useRef(true);
+  const hasInitialized = useRef(false);
   const playbackIdRef = useRef(0);
 
   useEffect(() => {
     isMounted.current = true;
-    // Start session on mount
-    initSession();
+    
+    // Hack to unlock the Audio element for autoplay:
+    // Play a tiny silent WAV file synchronously during the click event that mounts this component.
+    // This attaches the user gesture token to the audio player, preventing NotAllowedError later.
+    audioPlayerRef.current.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+    audioPlayerRef.current.play().catch(() => {});
+
+    // Start session on mount only once (Strict Mode fix)
+    if (!hasInitialized.current) {
+      hasInitialized.current = true;
+      initSession();
+    }
     
     return () => {
       isMounted.current = false;
@@ -55,6 +66,35 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
     };
   }, []);
 
+  // ─── Play a short beep then start VAD ─────────────────────────────────
+  const triggerVAD = () => {
+    if (!isMounted.current) return;
+    playBeep();
+    // Small delay so the beep finishes before mic opens
+    setTimeout(() => {
+      if (isMounted.current) setAutoStartTrigger(new Date());
+    }, 600);
+  };
+
+  // ─── Programmatic beep using AudioContext oscillator ──────────────────
+  const playBeep = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);         // A5 note
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.45);
+    } catch (e) {
+      console.warn('Beep failed:', e);
+    }
+  };
+
   const initSession = async () => {
     setIsProcessing(true);
     try {
@@ -66,8 +106,9 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         state: res.data.state,
         promptText: res.data.prompt_text,
       }));
-      // Play greeting
-      playAudio(`http://127.0.0.1:8000/api/voice/prompt/greeting`);
+      // Play short prompt then trigger VAD automatically
+      await playAudio(`http://127.0.0.1:8000/api/voice/prompt/ask_service_number?_t=${Date.now()}`);
+      if (isMounted.current) triggerVAD();
     } catch (err) {
       console.error(err);
       if (isMounted.current) {
@@ -87,6 +128,7 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
     }
   };
 
+  // playAudio — now returns a Promise that resolves when audio FINISHES playing
   const playAudio = async (url) => {
     if (!url) return null;
     const currentId = ++playbackIdRef.current;
@@ -98,7 +140,12 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
       const blobUrl = await fetchAudioBlob(url);
       if (!isMounted.current || playbackIdRef.current !== currentId) return null;
       audioPlayerRef.current.src = blobUrl;
-      await audioPlayerRef.current.play();
+      // Wait until playback finishes (not just starts)
+      await new Promise((resolve) => {
+        audioPlayerRef.current.onended = resolve;
+        audioPlayerRef.current.onerror = resolve;
+        audioPlayerRef.current.play().catch(resolve);
+      });
       return blobUrl;
     } catch (e) {
       if (playbackIdRef.current === currentId) {
@@ -148,18 +195,23 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         setSession(prev => ({
           ...prev,
           state: res.data.state,
-          transcript: res.data.recognized_text,
+          transcript: res.data.recognized_text || '[Unrecognized or silent audio]',
           promptText: res.data.prompt_text,
           language: res.data.stt_language,
           latency: res.data.stt_processing_time_ms,
         }));
         if (res.data.state === 'CAPTURING_COMPLAINT') {
-          playAudio(`http://127.0.0.1:8000/api/voice/prompt/ask_complaint`);
+          // Edge case: confirm said "yes" but went back to complaint
+          await playAudio(`http://127.0.0.1:8000/api/voice/prompt/ask_complaint?_t=${Date.now()}`);
+          if (isMounted.current) triggerVAD();
         } else if (res.data.state === 'CAPTURING_SERVICE_NUMBER') {
-          playAudio(`http://127.0.0.1:8000/api/voice/prompt/ask_service_number`);
+          // Edge case: confirm audio failed, ask again
+          await playAudio(`http://127.0.0.1:8000/api/voice/prompt/ask_service_number?_t=${Date.now()}`);
+          if (isMounted.current) triggerVAD();
         } else {
-          // Unclear — stay on CONFIRMING and replay the number
-          handleReplayServiceNumber();
+          // Unclear — stay on CONFIRMING, play the prompt, then trigger VAD
+          await playAudio(`http://127.0.0.1:8000/api/voice/prompt/confirm_yes_no?_t=${Date.now()}`);
+          if (isMounted.current) triggerVAD();
         }
       } else if (session.state === 'CAPTURING_SERVICE_NUMBER') {
         const res = await submitServiceNumberAudio(session.id, audioBlob);
@@ -167,7 +219,7 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         setSession(prev => ({
           ...prev,
           state: res.data.state,
-          transcript: res.data.recognized_text,
+          transcript: res.data.recognized_text || '[Unrecognized or silent audio]',
           serviceNumber: res.data.normalised_service_no,
           confidence: res.data.confidence,
           language: res.data.stt_language,
@@ -185,17 +237,19 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
             `${BASE}/prompt/confirm_yes_no`,
           ];
           confirmSequenceRef.current = [];
-          
-          // DO NOT await playSequential here, otherwise isProcessing stays true 
-          // and hides the record/confirm buttons until the long sequence finishes.
-          // Releasing it now allows the user to click record/confirm immediately.
-          playSequential(sequence).then(blobs => {
-            if (isMounted.current) confirmSequenceRef.current = blobs;
+          // Play the confirmation sequence then auto-trigger VAD for yes/no
+          playSequential(sequence).then(async blobs => {
+            if (isMounted.current) {
+              confirmSequenceRef.current = blobs;
+              triggerVAD(); // VAD for yes/no answer
+            }
           });
         } else if (res.data.state === 'CAPTURING_SERVICE_NUMBER') {
-          playAudio(`http://127.0.0.1:8000/api/voice/prompt/retry_service`);
+          // Retry edge case: STT failed, ask again + VAD
+          await playAudio(`http://127.0.0.1:8000/api/voice/prompt/retry_service?_t=${Date.now()}`);
+          if (isMounted.current) triggerVAD();
         } else if (res.data.state === 'OPERATOR_FALLBACK') {
-          playAudio(`http://127.0.0.1:8000/api/voice/prompt/fallback_operator`);
+          playAudio(`http://127.0.0.1:8000/api/voice/prompt/fallback_operator?_t=${Date.now()}`);
         }
       } 
       else if (session.state === 'CAPTURING_COMPLAINT' || session.state === 'OPERATOR_REVIEW') {
@@ -204,7 +258,7 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         setSession(prev => ({
           ...prev,
           state: res.data.state,
-          transcript: res.data.transcript,
+          transcript: res.data.transcript || '[Unrecognized or silent audio]',
           confidence: res.data.confidence,
           language: res.data.stt_language,
           latency: res.data.stt_processing_time_ms,
@@ -235,11 +289,11 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
              complainant_unit: '',
              complainant_rank: ''
            }, ttsUrl);
-        } else if (res.data.state === 'CAPTURING_COMPLAINT') {
-           // If they speak silence, backend returns CAPTURING_COMPLAINT
-           // We must dynamically play the returned promptText ("No speech detected...")
-           playAudio(`http://127.0.0.1:8000/api/voice/tts?text=${encodeURIComponent(res.data.prompt_text)}`);
-        }
+         } else if (res.data.state === 'CAPTURING_COMPLAINT') {
+           // Silence or invalid complaint — ask again with VAD auto-restart
+           await playAudio(`http://127.0.0.1:8000/api/voice/prompt/ask_complaint?_t=${Date.now()}`);
+           if (isMounted.current) triggerVAD();
+         }
       }
     } catch (err) {
       console.error(err);
@@ -261,9 +315,13 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
       }));
       
       if (confirmed) {
-        playAudio(`http://127.0.0.1:8000/api/voice/prompt/ask_complaint`);
+        // Yes — go to complaint capture
+        await playAudio(`http://127.0.0.1:8000/api/voice/prompt/ask_complaint?_t=${Date.now()}`);
+        if (isMounted.current) triggerVAD();
       } else {
-        playAudio(`http://127.0.0.1:8000/api/voice/prompt/ask_service_number`);
+        // No — retry service number edge case
+        await playAudio(`http://127.0.0.1:8000/api/voice/prompt/ask_service_number?_t=${Date.now()}`);
+        if (isMounted.current) triggerVAD();
       }
     } catch (err) {
       console.error(err);
@@ -306,7 +364,9 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         serviceNumber: res.data.service_no,
         transcript: '',
       }));
-      playAudio(`http://127.0.0.1:8000/api/voice/prompt/ask_complaint`);
+      // Fallback edge case: after manual service number entry, auto-start VAD for complaint
+      await playAudio(`http://127.0.0.1:8000/api/voice/prompt/ask_complaint`);
+      if (isMounted.current) triggerVAD();
     } catch (err) {
        console.error(err);
     } finally {
@@ -357,7 +417,8 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         <VoiceRecorder 
           onRecordingComplete={handleRecordingComplete}
           onRecordingStart={stopAllAudio}
-          isProcessing={isProcessing} 
+          isProcessing={isProcessing}
+          autoStartTrigger={autoStartTrigger}
         />
       )}
 

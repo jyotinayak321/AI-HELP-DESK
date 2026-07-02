@@ -23,11 +23,13 @@ function TranscriptPanel({ transcript, confidence, language, processingTimeMs, s
           <p style={textStyle}>"{transcript}"</p>
         ) : (
           <p style={placeholderStyle}>
-            {state === 'GREETING' || state === 'CAPTURING_SERVICE_NUMBER' 
-              ? 'Waiting for service number audio...' 
-              : state === 'CAPTURING_COMPLAINT'
-                ? 'Waiting for complaint audio...'
-                : 'Waiting for speech...'}
+            {state === 'OPERATOR_FALLBACK' || state === 'ERROR'
+              ? '[Unrecognized or silent audio]'
+              : state === 'GREETING' || state === 'CAPTURING_SERVICE_NUMBER' 
+                ? 'Waiting for service number audio...' 
+                : state === 'CAPTURING_COMPLAINT'
+                  ? 'Waiting for complaint audio...'
+                  : 'Waiting for speech...'}
           </p>
         )}
       </div>

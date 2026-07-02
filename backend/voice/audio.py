@@ -118,10 +118,12 @@ def detect_silence(
             format=source_format,
         )
 
-        if audio.dBFS < silence_threshold_dbfs:
+        # Use max_dBFS (peak volume) instead of average dBFS, because trailing 
+        # silence from the VAD can artificially lower the average dBFS of the file.
+        if audio.max_dBFS < silence_threshold_dbfs:
             logger.info(
-                "Silence detected: dBFS=%.1f (threshold=%.1f)",
-                audio.dBFS, silence_threshold_dbfs,
+                "Silence detected: max_dBFS=%.1f (threshold=%.1f)",
+                audio.max_dBFS, silence_threshold_dbfs,
             )
             return True
         return False
