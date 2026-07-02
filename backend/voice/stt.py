@@ -25,10 +25,15 @@ import time
 import logging
 import tempfile
 import numpy as np
+import collections
+import wave
+import struct
+import torch
 from dataclasses import dataclass, field
 from typing import Optional, List
 
 logger = logging.getLogger("voice.stt")
+
 
 
 @dataclass
@@ -255,3 +260,121 @@ class SpeechToTextEngine:
     def is_loaded(self) -> bool:
         """Check whether the model has been loaded into GPU memory."""
         return self._model is not None
+
+
+def float32_to_wav_bytes(samples: np.ndarray, sample_rate: int = 16000) -> bytes:
+    """Convert float32 samples (-1.0 to 1.0) to 16-bit PCM WAV bytes."""
+    # Scale to 16-bit int range (-32768 to 32767)
+    int_samples = np.clip(samples, -1.0, 1.0) * 32767.0
+    int_samples = int_samples.astype(np.int16)
+    
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)  # 16-bit
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(int_samples.tobytes())
+    return buf.getvalue()
+
+
+class SileroVADDetector:
+    """Stateful voice activity detector using Silero VAD PyTorch JIT model."""
+
+    def __init__(self, model_path: Optional[str] = None, threshold: float = 0.5,
+                 sampling_rate: int = 16000, silence_timeout_ms: int = 800):
+        if model_path is None:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            model_path = os.path.normpath(
+                os.path.join(current_dir, "..", "local_models", "silero_vad.jit")
+            )
+            
+        logger.info("Loading Silero VAD from: %s", model_path)
+        self.model = torch.jit.load(model_path, map_location="cpu")
+        self.model.eval()
+        
+        self.threshold = threshold
+        self.sampling_rate = sampling_rate
+        self.silence_timeout_samples = int(sampling_rate * silence_timeout_ms / 1000)
+        
+        # State variables
+        self.triggered = False
+        self.temp_end = 0
+        self.current_sample = 0
+        self.speech_buffer = []
+        self.pre_roll = collections.deque(maxlen=10)  # 10 chunks of 512 samples = ~320ms pre-roll
+        
+        self.reset()
+        
+    def reset(self):
+        """Reset internal detector state."""
+        self.model.reset_states()
+        self.triggered = False
+        self.temp_end = 0
+        self.current_sample = 0
+        self.speech_buffer = []
+        self.pre_roll.clear()
+        
+    def process_chunk(self, chunk: np.ndarray) -> dict:
+        """
+        Process a chunk of 16kHz audio samples.
+        
+        Parameters
+        ----------
+        chunk : np.ndarray
+            1D float32 array of shape (512,).
+            
+        Returns
+        -------
+        dict
+            Contains:
+            - "status": "speech_started", "speech_ended", or "none"
+            - "audio": numpy array of float32 samples (only when status is "speech_ended")
+        """
+        if chunk.ndim != 1 or len(chunk) != 512:
+            # We buffer chunks in routers to ensure we always pass exactly 512 samples.
+            raise ValueError(f"Silero VAD expects a 512-sample chunk, got {len(chunk)}")
+            
+        x = torch.from_numpy(chunk).unsqueeze(0)  # shape: (1, 512)
+        window_size_samples = len(chunk)
+        self.current_sample += window_size_samples
+        
+        with torch.no_grad():
+            speech_prob = self.model(x, self.sampling_rate).item()
+            
+        status = "none"
+        
+        if speech_prob >= self.threshold:
+            if self.temp_end:
+                self.temp_end = 0
+            if not self.triggered:
+                self.triggered = True
+                status = "speech_started"
+                
+        elif speech_prob < (self.threshold - 0.15):
+            if self.triggered:
+                if not self.temp_end:
+                    self.temp_end = self.current_sample
+                if self.current_sample - self.temp_end >= self.silence_timeout_samples:
+                    self.triggered = False
+                    self.temp_end = 0
+                    status = "speech_ended"
+                    
+        # Buffering logic
+        if not self.triggered:
+            self.pre_roll.append(chunk)
+        else:
+            if status == "speech_started":
+                # Speech just started - copy all pre-roll samples to speech buffer
+                self.speech_buffer.extend(list(self.pre_roll))
+                self.pre_roll.clear()
+            self.speech_buffer.append(chunk)
+            
+        if status == "speech_ended":
+            full_audio = np.concatenate(self.speech_buffer, axis=0) if self.speech_buffer else np.array([], dtype=np.float32)
+            self.speech_buffer = []
+            return {"status": "speech_ended", "audio": full_audio}
+        elif status == "speech_started":
+            return {"status": "speech_started", "audio": None}
+            
+        return {"status": "none", "audio": None}
+

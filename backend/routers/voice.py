@@ -26,7 +26,7 @@ import time
 import logging
 import re
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
 from sqlmodel import Session
 
@@ -1037,3 +1037,401 @@ def voice_prompt(
 
     # Last resort: return the text
     return {"prompt_key": key, "text": fallback_text, "audio_available": False}
+
+
+async def run_pipeline_step(session, wav_bytes: bytes, operator_id: str) -> dict:
+    """Execute the STT, validation, LLM correction, and classification pipeline for the current session state."""
+    import numpy as np
+    from database import engine
+    from sqlmodel import Session
+    
+    stt = _get_stt()
+    
+    if session.state == SessionState.CAPTURING_SERVICE_NUMBER:
+        try:
+            result = stt.transcribe(wav_bytes)
+        except Exception as exc:
+            logger.warning("STT failed in WebSocket: %s", exc)
+            result = None
+            
+        if not result or result.is_silent or not result.text.strip():
+            retries = session_manager.increment_svc_retries(session.session_id)
+            if session_manager.should_fallback(session.session_id):
+                session_manager.transition(session.session_id, SessionState.OPERATOR_FALLBACK)
+                return {
+                    "state": SessionState.OPERATOR_FALLBACK.value,
+                    "recognized_text": "",
+                    "normalised_service_no": "",
+                    "is_valid": False,
+                    "retries_count": retries,
+                    "prompt_text": get_prompt_text("fallback_operator"),
+                    "audio_urls": ["/api/voice/prompt/fallback_operator"],
+                    "error_reason": "No speech detected. Maximum retries exceeded."
+                }
+            return {
+                "state": SessionState.CAPTURING_SERVICE_NUMBER.value,
+                "recognized_text": "",
+                "normalised_service_no": "",
+                "is_valid": False,
+                "retries_count": retries,
+                "prompt_text": render_dynamic_prompt("retry_service_number", attempt=retries, max_attempts=MAX_SERVICE_NUMBER_RETRIES),
+                "audio_urls": [f"/api/voice/tts?text={render_dynamic_prompt('retry_service_number', attempt=retries, max_attempts=MAX_SERVICE_NUMBER_RETRIES)}"],
+                "error_reason": "No speech detected. Please try again."
+            }
+            
+        session.total_stt_calls += 1
+        session.stt_latency_ms = result.processing_time_ms
+        
+        validation = validate_service_number(result.text)
+        if validation.is_valid:
+            session_manager.transition(
+                session.session_id,
+                SessionState.CONFIRMING_SERVICE_NUMBER,
+                service_no=validation.normalised,
+                stt_confidence=result.confidence,
+                stt_language=result.language,
+            )
+            prompt_text = render_dynamic_prompt("confirm_service_number", service_number=validation.normalised)
+            return {
+                "state": SessionState.CONFIRMING_SERVICE_NUMBER.value,
+                "recognized_text": result.text,
+                "normalised_service_no": validation.normalised,
+                "is_valid": True,
+                "confidence": result.confidence,
+                "stt_language": result.language,
+                "stt_processing_time_ms": result.processing_time_ms,
+                "prompt_text": prompt_text,
+                "audio_urls": [
+                    "/api/voice/prompt/heard_as",
+                    f"/api/voice/spell/{validation.normalised}",
+                    "/api/voice/prompt/is_that_correct",
+                    "/api/voice/prompt/confirm_yes_no"
+                ]
+            }
+        else:
+            retries = session_manager.increment_svc_retries(session.session_id)
+            if session_manager.should_fallback(session.session_id):
+                session_manager.transition(session.session_id, SessionState.OPERATOR_FALLBACK)
+                return {
+                    "state": SessionState.OPERATOR_FALLBACK.value,
+                    "recognized_text": result.text,
+                    "normalised_service_no": validation.normalised,
+                    "is_valid": False,
+                    "confidence": result.confidence,
+                    "retries_count": retries,
+                    "prompt_text": get_prompt_text("fallback_operator"),
+                    "audio_urls": ["/api/voice/prompt/fallback_operator"],
+                    "error_reason": validation.error_reason,
+                    "stt_language": result.language,
+                    "stt_processing_time_ms": result.processing_time_ms
+                }
+            prompt_text = render_dynamic_prompt("retry_service_number", attempt=retries, max_attempts=MAX_SERVICE_NUMBER_RETRIES)
+            return {
+                "state": SessionState.CAPTURING_SERVICE_NUMBER.value,
+                "recognized_text": result.text,
+                "normalised_service_no": validation.normalised,
+                "is_valid": False,
+                "confidence": result.confidence,
+                "retries_count": retries,
+                "prompt_text": prompt_text,
+                "audio_urls": [f"/api/voice/tts?text={prompt_text}"],
+                "error_reason": validation.error_reason,
+                "stt_language": result.language,
+                "stt_processing_time_ms": result.processing_time_ms
+            }
+            
+    elif session.state == SessionState.CONFIRMING_SERVICE_NUMBER:
+        try:
+            result = stt.transcribe(wav_bytes)
+        except Exception as exc:
+            logger.warning("STT failed in WebSocket: %s", exc)
+            result = None
+            
+        if not result or result.is_silent or not result.text.strip():
+            return {
+                "state": SessionState.CONFIRMING_SERVICE_NUMBER.value,
+                "recognized_text": "",
+                "confirmed": None,
+                "prompt_text": "No speech detected. Please say Yes or No.",
+                "audio_urls": ["/api/voice/tts?text=No%20speech%20detected.%20Please%20say%20Yes%20or%20No."]
+            }
+            
+        text = result.text.lower().strip()
+        clean_text = re.sub(r'[^\w\s]', '', text)
+        
+        YES_WORDS = {"yes", "yeah", "yep", "correct", "right", "haan", "han", "ha", "bilkul", "sahi", "ok", "okay", "confirm"}
+        NO_WORDS  = {"no", "nope", "wrong", "incorrect", "nahi", "nein", "nai", "nah", "retry", "again"}
+        
+        words = set(clean_text.split())
+        is_yes = bool(words & YES_WORDS)
+        is_no  = bool(words & NO_WORDS)
+        
+        if is_yes and not is_no:
+            session_manager.transition(session.session_id, SessionState.CAPTURING_COMPLAINT)
+            return {
+                "state": SessionState.CAPTURING_COMPLAINT.value,
+                "recognized_text": result.text,
+                "confirmed": True,
+                "prompt_text": get_prompt_text("ask_complaint"),
+                "audio_urls": ["/api/voice/prompt/ask_complaint"],
+                "stt_language": result.language,
+                "stt_processing_time_ms": result.processing_time_ms
+            }
+        elif is_no and not is_yes:
+            session_manager.transition(session.session_id, SessionState.CAPTURING_SERVICE_NUMBER)
+            return {
+                "state": SessionState.CAPTURING_SERVICE_NUMBER.value,
+                "recognized_text": result.text,
+                "confirmed": False,
+                "prompt_text": get_prompt_text("ask_service_number"),
+                "audio_urls": ["/api/voice/prompt/ask_service_number"],
+                "stt_language": result.language,
+                "stt_processing_time_ms": result.processing_time_ms
+            }
+        else:
+            prompt_text = "Sorry, I didn't understand. Please say Yes to confirm or No to retry."
+            return {
+                "state": SessionState.CONFIRMING_SERVICE_NUMBER.value,
+                "recognized_text": result.text,
+                "confirmed": None,
+                "prompt_text": prompt_text,
+                "audio_urls": [f"/api/voice/tts?text={prompt_text}"],
+                "stt_language": result.language,
+                "stt_processing_time_ms": result.processing_time_ms
+            }
+            
+    elif session.state in (SessionState.CAPTURING_COMPLAINT, SessionState.OPERATOR_REVIEW):
+        try:
+            result = stt.transcribe(wav_bytes)
+        except Exception as exc:
+            logger.warning("STT failed in WebSocket: %s", exc)
+            result = None
+            
+        if not result or result.is_silent or not result.text.strip():
+            return {
+                "state": session.state.value,
+                "transcript": "",
+                "confidence": 0.0,
+                "prompt_text": "No speech detected. Please describe your complaint again.",
+                "audio_urls": ["/api/voice/tts?text=No%20speech%20detected.%20Please%20describe%20your%20complaint%20again."]
+            }
+            
+        complaint_text = result.text.strip()
+        
+        # LLM Guardrail
+        guardrail_result = verify_and_correct_text(complaint_text)
+        if guardrail_result["status"] == "rejected":
+            reason = guardrail_result.get("reason", "Complaint could not be understood.")
+            prompt_text = f"{reason} Please describe your IT issue again clearly."
+            return {
+                "state": session.state.value,
+                "transcript": complaint_text,
+                "confidence": result.confidence,
+                "stt_language": result.language,
+                "stt_processing_time_ms": result.processing_time_ms,
+                "prompt_text": prompt_text,
+                "audio_urls": [f"/api/voice/tts?text={prompt_text}"]
+            }
+            
+        complaint_text = guardrail_result.get("corrected_text", complaint_text)
+        
+        with Session(engine) as db_session:
+            # Run AI pipeline
+            embedding = embedder.get_embedding(complaint_text)
+            fault_type = classifier.classify_fault_type(db_session, complaint_text, embedding)
+            severity = classifier.classify_severity(db_session, complaint_text, embedding)
+            raw_candidates = search_engine.search_candidates(db_session, embedding)
+            
+            enriched_candidates = []
+            for cand in raw_candidates:
+                app_obj = db_session.get(Application, cand["application_id"])
+                if app_obj:
+                    enriched_candidates.append({
+                        "application_id": app_obj.id,
+                        "application_name": app_obj.name,
+                        "confidence_score": round(cand["score"], 4),
+                        "is_primary": (len(enriched_candidates) == 0)
+                    })
+                    
+            primary_candidate = enriched_candidates[0] if enriched_candidates else None
+            if primary_candidate:
+                dep_ids = dependency_engine.expand_dependencies(
+                    db_session=db_session,
+                    primary_app_id=primary_candidate["application_id"],
+                    fault_type=fault_type
+                )
+                existing_ids = {c["application_id"] for c in enriched_candidates}
+                for d_id in dep_ids:
+                    if d_id not in existing_ids:
+                        d_app = db_session.get(Application, d_id)
+                        if d_app:
+                            enriched_candidates.append({
+                                "application_id": d_id,
+                                "application_name": d_app.name,
+                                "confidence_score": 0.0,
+                                "is_primary": False
+                            })
+                            
+            # Create Intake
+            intake = Intake(
+                raw_text=complaint_text,
+                operator_id=operator_id,
+                complainant_service_no=session.service_no,
+                complainant_name=session.complainant_name,
+                complainant_unit=session.complainant_unit,
+                complainant_rank=session.complainant_rank
+            )
+            db_session.add(intake)
+            db_session.commit()
+            db_session.refresh(intake)
+            
+            session_manager.transition(
+                session.session_id,
+                SessionState.OPERATOR_REVIEW,
+                complaint_text=complaint_text,
+                stt_confidence=result.confidence,
+                stt_language=result.language,
+                intake_id=intake.id,
+                fault_type_proposal=fault_type,
+                severity_proposal=severity,
+                candidates=enriched_candidates
+            )
+            
+            app_name = primary_candidate["application_name"] if primary_candidate else "Unknown"
+            prompt_text = render_dynamic_prompt(
+                "classification_summary",
+                complaint_text=complaint_text[:100],
+                application_name=app_name,
+                fault_type=fault_type,
+                severity=severity
+            )
+            
+            return {
+                "state": SessionState.OPERATOR_REVIEW.value,
+                "transcript": complaint_text,
+                "confidence": result.confidence,
+                "stt_language": result.language,
+                "stt_processing_time_ms": result.processing_time_ms,
+                "intake_id": intake.id,
+                "fault_type_proposal": fault_type,
+                "severity_proposal": severity,
+                "candidates": enriched_candidates,
+                "prompt_text": prompt_text,
+                "audio_urls": []
+            }
+            
+    return {"state": session.state.value, "prompt_text": "Unsupported state."}
+
+
+@router.websocket("/stream")
+async def voice_stream(
+    websocket: WebSocket,
+    session_id: str,
+    operator_id: str,
+):
+    """WebSocket endpoint to continuously capture and process audio streams using Silero VAD."""
+    import numpy as np
+    from voice.stt import SileroVADDetector, float32_to_wav_bytes
+
+    await websocket.accept()
+    logger.info("WebSocket connection accepted for session: %s", session_id)
+
+    session = session_manager.get_session(session_id)
+    if session is None:
+        logger.warning("WebSocket rejected: session %s not found", session_id)
+        await websocket.send_json({"event": "error", "message": "Voice session not found or expired."})
+        await websocket.close(code=4000, reason="Voice session not found or expired.")
+        return
+
+    try:
+        detector = SileroVADDetector()
+    except Exception as e:
+        logger.error("Failed to load Silero VAD detector: %s", e)
+        await websocket.send_json({"event": "error", "message": f"Failed to initialize VAD: {e}"})
+        await websocket.close(code=4001)
+        return
+
+    audio_buffer = np.array([], dtype=np.float32)
+
+    try:
+        while True:
+            # Use receive() to handle both data frames and disconnect messages cleanly
+            message = await websocket.receive()
+
+            if message["type"] == "websocket.disconnect":
+                logger.info("WebSocket disconnect message received for session: %s", session_id)
+                break
+
+            if message["type"] != "websocket.receive":
+                continue
+
+            raw_bytes = message.get("bytes")
+            if not raw_bytes:
+                # Text frame or empty frame — ignore
+                continue
+
+            # Convert raw float32 bytes to numpy array
+            chunk = np.frombuffer(raw_bytes, dtype=np.float32)
+            if chunk.size == 0:
+                continue
+
+            # Append to rolling buffer
+            audio_buffer = np.concatenate([audio_buffer, chunk])
+
+            # Process in chunks of exactly 512 samples (required by Silero VAD)
+            while len(audio_buffer) >= 512:
+                vad_chunk = audio_buffer[:512].copy()
+                audio_buffer = audio_buffer[512:]
+
+                vad_result = detector.process_chunk(vad_chunk)
+                status = vad_result["status"]
+
+                if status == "speech_started":
+                    logger.info("VAD: Speech started for session: %s", session_id)
+                    await websocket.send_json({"event": "speech_started"})
+
+                elif status == "speech_ended":
+                    logger.info("VAD: Speech ended for session: %s", session_id)
+                    await websocket.send_json({"event": "speech_ended"})
+
+                    full_audio = vad_result.get("audio")
+                    if full_audio is None or len(full_audio) == 0:
+                        logger.warning("VAD: speech_ended but audio buffer is empty — skipping STT")
+                        detector.reset()
+                        audio_buffer = np.array([], dtype=np.float32)
+                        continue
+
+                    wav_bytes = float32_to_wav_bytes(full_audio, 16000)
+
+                    latest_session = session_manager.get_session(session_id)
+                    if not latest_session:
+                        await websocket.send_json({"event": "error", "message": "Session expired."})
+                        return
+
+                    try:
+                        response_data = await run_pipeline_step(latest_session, wav_bytes, operator_id)
+                    except Exception as pipeline_err:
+                        logger.error("Pipeline error for session %s: %s", session_id, pipeline_err, exc_info=True)
+                        await websocket.send_json({"event": "error", "message": f"Processing error: {pipeline_err}"})
+                        detector.reset()
+                        audio_buffer = np.array([], dtype=np.float32)
+                        continue
+
+                    # Reset detector and buffer BEFORE sending result to avoid race conditions
+                    detector.reset()
+                    audio_buffer = np.array([], dtype=np.float32)
+
+                    await websocket.send_json({
+                        "event": "result",
+                        **response_data
+                    })
+
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnected for session: %s", session_id)
+    except Exception as e:
+        logger.error("Error in WebSocket handler: %s", e, exc_info=True)
+        try:
+            await websocket.send_json({"event": "error", "message": str(e)})
+        except:
+            pass
+
