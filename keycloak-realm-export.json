@@ -1,0 +1,204 @@
+{
+    "id": "ai-helpdesk",
+    "realm": "ai-helpdesk",
+    "enabled": true,
+    "sslRequired": "external",
+    "roles": {
+        "realm": [
+            {
+                "name": "operator"
+            },
+            {
+                "name": "admin"
+            }
+        ]
+    },
+    "clients": [
+        {
+            "clientId": "helpdesk-frontend",
+            "enabled": true,
+            "publicClient": true,
+            "directAccessGrantsEnabled": true,
+            "redirectUris": [
+                "http://localhost:5173/*",
+                "http://localhost:5174/*",
+                "http://localhost:5175/*"
+            ],
+            "webOrigins": [
+                "*"
+            ]
+        }
+    ],
+    "users": [
+        {
+            "username": "OP-10001",
+            "email": "op-10001@company.local",
+            "firstName": "Operator",
+            "lastName": "10001",
+            "enabled": true,
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "pass_operator1",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "operator"
+            ]
+        },
+        {
+            "username": "OP-10002",
+            "email": "op-10002@company.local",
+            "firstName": "Operator",
+            "lastName": "10002",
+            "enabled": true,
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "pass_operator2",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "operator"
+            ]
+        },
+        {
+            "username": "OP-10003",
+            "email": "op-10003@company.local",
+            "firstName": "Operator",
+            "lastName": "10003",
+            "enabled": true,
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "pass_operator3",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "operator"
+            ]
+        },
+        {
+            "username": "ADM-20001",
+            "email": "adm-20001@company.local",
+            "firstName": "Admin",
+            "lastName": "20001",
+            "enabled": true,
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "pass_company",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "admin"
+            ]
+        },
+        {
+            "username": "ADM-20002",
+            "email": "adm-20002@company.local",
+            "firstName": "Admin",
+            "lastName": "20002",
+            "enabled": true,
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "pass_hrms",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "admin"
+            ]
+        },
+        {
+            "username": "ADM-20003",
+            "email": "adm-20003@company.local",
+            "firstName": "Admin",
+            "lastName": "20003",
+            "enabled": true,
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "pass_leave",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "admin"
+            ]
+        },
+        {
+            "username": "ADM-20004",
+            "email": "adm-20004@company.local",
+            "firstName": "Admin",
+            "lastName": "20004",
+            "enabled": true,
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "pass_travel",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "admin"
+            ]
+        },
+        {
+            "username": "ADM-20005",
+            "email": "adm-20005@company.local",
+            "firstName": "Admin",
+            "lastName": "20005",
+            "enabled": true,
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "pass_sso",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "admin"
+            ]
+        },
+        {
+            "username": "ADM-20006",
+            "email": "adm-20006@company.local",
+            "firstName": "Admin",
+            "lastName": "20006",
+            "enabled": true,
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "pass_pay",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "admin"
+            ]
+        },
+        {
+            "username": "ADM-20007",
+            "email": "adm-20007@company.local",
+            "firstName": "Admin",
+            "lastName": "20007",
+            "enabled": true,
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "pass_medical",
+                    "temporary": false
+                }
+            ],
+            "realmRoles": [
+                "admin"
+            ]
+        }
+    ]
+}
