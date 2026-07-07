@@ -22,10 +22,11 @@ SQLAlchemy==2.0.51
 sqlmodel==0.0.38
 
 # ==========================================
-# AI / ML Core (Torch ecosystem — CUDA 12.6 build)
+# AI / ML Core (Torch ecosystem — CUDA 12.8 build)
 # ==========================================
-torch==2.7.0+cu126
-torchaudio==2.7.0+cu126
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
+torchaudio==2.11.0+cu128
 numpy==2.4.4
 accelerate==1.14.0
 sentence-transformers==5.6.0
@@ -44,11 +45,14 @@ silero-vad
 faster-whisper==1.0.3
 pydub==0.25.1
 pyttsx3==2.90
-
+ctranslate2==4.8.1
+onnxruntime-gpu==1.27.0
+protobuf==7.35.1
+flatbuffers==25.12.19
 # ==========================================
 # Phase 3: LLM Guardrail (MOCK_LLM=False mode)
 # ==========================================
-openai>=1.0.0
+openai==2.44.0
 
 # ==========================================
 # Utilities / Supporting Libraries
@@ -82,7 +86,7 @@ PyYAML==6.0.3
 regex==2026.5.9
 rich==15.0.0
 shellingham==1.5.4
-sympy>=1.13.3
+sympy==1.14.0
 threadpoolctl==3.6.0
 tqdm==4.68.3
 typer==0.25.1

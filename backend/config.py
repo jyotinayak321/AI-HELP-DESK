@@ -36,7 +36,9 @@ class Settings(BaseSettings):
     STT_MODEL_SIZE: str = "medium"
     STT_DEVICE: str = "auto"          # "auto", "cuda", "cpu"
     STT_COMPUTE_TYPE: str = "default" # "default", "float16", "int8", "float32"
-
+    STT_KEEP_MODEL_LOADED: bool = False    #True  = keep in memory (offline GPU PC, faster response)
+    
+    
     # VAD (Voice Activity Detection) — Silero VAD
     VAD_DEVICE: str = "cpu"           # ✅ NEW: "cpu" on home PC, "cuda" on offline GPU PC
 

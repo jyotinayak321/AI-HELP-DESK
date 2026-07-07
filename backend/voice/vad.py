@@ -63,7 +63,7 @@ class StreamingEndpointDetector:
 
     def __init__(
         self,
-        silence_duration_ms: int = 1200,
+        silence_duration_ms: int = 800,
         speech_threshold: float = 0.5,
         min_speech_ms: int = 250,
         max_wait_ms: int = 8000,

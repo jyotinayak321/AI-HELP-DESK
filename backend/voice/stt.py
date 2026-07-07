@@ -27,6 +27,7 @@ import tempfile
 import numpy as np
 from dataclasses import dataclass, field
 from typing import Optional, List
+from config import settings 
 
 logger = logging.getLogger("voice.stt")
 
@@ -150,7 +151,7 @@ class SpeechToTextEngine:
         audio_bytes: bytes,
         language: Optional[str] = None,
         *,
-        beam_size: int = 5,
+        beam_size: int = 1,
         vad_filter: bool = True,
         word_timestamps: bool = False,
     ) -> TranscriptionResult:
@@ -177,6 +178,11 @@ class SpeechToTextEngine:
         """
         self._ensure_model()
 
+        t_start = time.perf_counter()   # ✅ ADD
+        
+        t_end = time.perf_counter()     # ✅ ADD
+        print(f"[TIMING] Total transcribe() time: {(t_end-t_start)*1000:.0f}ms")   # ✅ ADD
+        
         # Write bytes to a temp file because faster-whisper expects a path
         # or numpy array.  Using tempfile avoids holding large buffers.
         tmp_path = None
@@ -256,9 +262,10 @@ class SpeechToTextEngine:
             # On low-RAM machines (8GB), keeping this model loaded
             # permanently competes with the embedder model for memory,
             # causing the OS to kill the process (silent crash, no traceback).
-            self._model = None
-            import gc
-            gc.collect()
+            if not settings.STT_KEEP_MODEL_LOADED:
+                self._model = None
+                import gc
+                gc.collect()
 
     def is_loaded(self) -> bool:
         """Check whether the model has been loaded into GPU memory."""

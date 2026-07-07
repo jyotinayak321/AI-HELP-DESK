@@ -25,6 +25,7 @@ import wave
 import struct
 import logging
 import tempfile
+from config import settings
 from typing import Optional
 
 logger = logging.getLogger("voice.tts")
