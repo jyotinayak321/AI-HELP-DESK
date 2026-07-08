@@ -160,6 +160,17 @@ class VoiceFallbackResponse(BaseModel):
     prompt_text: str
 
 
+class VoiceAnotherComplaintResponse(BaseModel):
+    """Response from POST /api/voice/another-complaint (R-42)."""
+    session_id: str
+    state: str
+    recognized_text: str
+    wants_another: Optional[bool] = None   # True=yes, False=no, None=unclear
+    prompt_text: str
+    stt_language: Optional[str] = None
+    stt_processing_time_ms: float = 0.0
+
+
 class VoiceRetryResponse(BaseModel):
     """Response from POST /api/voice/retry."""
     session_id: str
