@@ -30,16 +30,17 @@ function TicketBlock({ index, ticket, candidates, onUpdate, onRemove, canRemove 
       <div style={{ marginBottom: '10px' }}>
         <div style={cardTitle}>Primary Application</div>
         {candidates.map(c => (
-          <div key={c.application_id} onClick={() => set('selectedAppId', c.application_id)}
+          <div key={c.application_id} onClick={() => onUpdate(index, { ...ticket, selectedAppId: c.application_id, noMatch: false })}
             style={{
               display: 'flex', alignItems: 'center', gap: '12px',
               padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', marginBottom: '4px',
-              border: ticket.selectedAppId === c.application_id ? '1.5px solid var(--accent)' : '1px solid var(--border)',
-              background: ticket.selectedAppId === c.application_id ? 'rgba(24,95,165,0.12)' : 'var(--surface-1)',
+              border: !ticket.noMatch && ticket.selectedAppId === c.application_id ? '1.5px solid var(--accent)' : '1px solid var(--border)',
+              background: !ticket.noMatch && ticket.selectedAppId === c.application_id ? 'rgba(24,95,165,0.12)' : 'var(--surface-1)',
+              opacity: ticket.noMatch ? 0.5 : 1,
             }}>
-            <input type="radio" readOnly checked={ticket.selectedAppId === c.application_id} style={{ accentColor: 'var(--accent)' }} />
+            <input type="radio" readOnly checked={!ticket.noMatch && ticket.selectedAppId === c.application_id} style={{ accentColor: 'var(--accent)' }} />
             <span style={{ fontSize: '13px', flex: 1, color: 'var(--text-primary)' }}>{c.application_name}</span>
-            {ticket.selectedAppId !== c.application_id && (
+            {!ticket.noMatch && ticket.selectedAppId !== c.application_id && (
               <label style={{ fontSize: '11px', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                 onClick={e => { e.stopPropagation(); toggleRelated(c.application_id); }}>
                 <input type="checkbox" checked={ticket.relatedAppIds.includes(c.application_id)} readOnly /> related
@@ -47,6 +48,20 @@ function TicketBlock({ index, ticket, candidates, onUpdate, onRemove, canRemove 
             )}
           </div>
         ))}
+
+        {/* R-17: unclassified path — abstain rather than force a wrong label */}
+        <div onClick={() => set('noMatch', true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '12px',
+            padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', marginTop: '2px',
+            border: ticket.noMatch ? '1.5px solid var(--warning)' : '1px dashed var(--border)',
+            background: ticket.noMatch ? 'rgba(245,158,11,0.1)' : 'transparent',
+          }}>
+          <input type="radio" readOnly checked={!!ticket.noMatch} style={{ accentColor: 'var(--warning)' }} />
+          <span style={{ fontSize: '13px', color: ticket.noMatch ? 'var(--warning)' : 'var(--text-muted)' }}>
+            None of these match — send to triage
+          </span>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -149,8 +164,11 @@ function ClassifyReview() {
           intake_id,
           confirmed_app_id:     t.noMatch ? null : t.selectedAppId,
           related_app_ids:      t.noMatch ? [] : t.relatedAppIds,
-          confirmed_fault_type: t.noMatch ? 'other' : t.faultType,
-          confirmed_severity:   t.noMatch ? 'normal' : t.severity,
+          // R-17: fault type/severity are kept even when no application
+          // matches — the operator may know "the system is down" without
+          // knowing which system. Only the application gets nulled out.
+          confirmed_fault_type: t.faultType,
+          confirmed_severity:   t.severity,
           operator_notes:       t.notes || '',
           predicted_app_id:     predictedAppId,
           predicted_fault_type: fault_type_proposal,

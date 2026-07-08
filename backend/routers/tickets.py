@@ -309,10 +309,16 @@ def confirm_ticket(
             detail=f"Invalid severity: '{request.confirmed_severity}'. Must be one of {VALID_SEVERITIES}",
         )
 
-    # Look up the confirmed application
-    app = session.get(Application, request.confirmed_app_id)
-    if not app:
-        raise HTTPException(status_code=404, detail=f"Application ID {request.confirmed_app_id} not found.")
+    # Look up the confirmed application. None means the operator rejected
+    # every candidate (R-17) — route to triage instead of forcing a
+    # wrong label; a captured miss is useful research data.
+    app = None
+    if request.confirmed_app_id is not None:
+        app = session.get(Application, request.confirmed_app_id)
+        if not app:
+            raise HTTPException(status_code=404, detail=f"Application ID {request.confirmed_app_id} not found.")
+
+    ticket_status = "open" if app else "triage"
 
     # Look up the intake record
     intake = session.get(Intake, request.intake_id)
@@ -331,7 +337,7 @@ def confirm_ticket(
         ticket_number=ticket_number,
         intake_id=intake.id,
         primary_application_id=request.confirmed_app_id,
-        status="open",
+        status=ticket_status,
         fault_type=request.confirmed_fault_type,
         severity=request.confirmed_severity,
         complainant_service_no=intake.complainant_service_no,
@@ -382,20 +388,21 @@ def confirm_ticket(
 
     # -----------------------------------------------------------------
     # R-16: Route to the owning team (stored in response for frontend)
+    # No application confirmed -> no team to route to, stays in triage.
     # -----------------------------------------------------------------
-    routed_to = app.owning_team
+    routed_to = app.owning_team if app else "Unassigned"
 
     # -----------------------------------------------------------------
     # Log initial ticket history entry
     # -----------------------------------------------------------------
+    base_note = f"Ticket created. Routed to {routed_to}." if app else \
+        "Ticket created. No matching application — sent to triage."
     history = TicketHistory(
         ticket_number=ticket_number,
         changed_by="system",
         old_status="",
-        new_status="open",
-        notes=f"Ticket created. Routed to {routed_to}. "
-              f"Operator notes: {request.operator_notes}" if request.operator_notes else
-              f"Ticket created. Routed to {routed_to}.",
+        new_status=ticket_status,
+        notes=f"{base_note} Operator notes: {request.operator_notes}" if request.operator_notes else base_note,
     )
     session.add(history)
 
@@ -423,12 +430,13 @@ def confirm_ticket(
 
     return TicketConfirmResponse(
         ticket_number=ticket_number,
-        status="open",
-        primary_application_name=app.name,
+        status=ticket_status,
+        primary_application_name=app.name if app else "Unclassified",
         fault_type=request.confirmed_fault_type,
         severity=request.confirmed_severity,
         routed_to_team=routed_to,
-        message=f"Ticket {ticket_number} created and routed to {routed_to}.",
+        message=f"Ticket {ticket_number} created and routed to {routed_to}." if app else
+                f"Ticket {ticket_number} created and sent to triage (no matching application).",
         voice_session_id=request.voice_session_id if voice_next_state else None,
         voice_next_state=voice_next_state,
         voice_prompt_text=voice_prompt_text,

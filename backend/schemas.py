@@ -179,7 +179,12 @@ class TicketConfirmRequest(BaseModel):
     Captures the confirmed values vs. what the AI predicted (R-22).
     """
     intake_id: int
-    confirmed_app_id: int = Field(..., description="The app the operator confirmed as primary")
+    confirmed_app_id: Optional[int] = Field(
+        default=None,
+        description="The app the operator confirmed as primary. None means the operator "
+                    "rejected all candidates (R-17) — the ticket is routed to triage "
+                    "instead of forcing a wrong label.",
+    )
     related_app_ids: list[int] = Field(
         default_factory=list,
         description="Additional affected applications",
