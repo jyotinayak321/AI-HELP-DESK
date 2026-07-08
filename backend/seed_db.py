@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 from sqlmodel import Session, select, SQLModel
@@ -5,19 +6,23 @@ from database import engine, init_db
 from models import Application, ApplicationSymptom, ApplicationPurpose, ApplicationDependency, ClassificationConfig, UserRole, Ticket
 from services.embedder import TextEmbedder
 
-def seed():
+def seed(data_file: str = None):
     print("Creating database tables...")
     init_db()
     SQLModel.metadata.create_all(engine)
     print("Loading AI Model (E5)... This might take a few seconds.")
     embedder = TextEmbedder()
     
-    seed_file = os.path.join(os.path.dirname(__file__), "dummy_seed_data.json")
+    if data_file is None:
+        data_file = "dummy_seed_data.json"
+    
+    seed_file = os.path.join(os.path.dirname(__file__), data_file)
     if not os.path.exists(seed_file):
         print(f"Error: Could not find {seed_file}")
         return
 
-    with open(seed_file, "r") as f:
+    print(f"Loading seed data from: {seed_file}")
+    with open(seed_file, "r", encoding="utf-8") as f:
         data = json.load(f)
         
     with Session(engine) as session:
@@ -109,4 +114,12 @@ def seed():
         print("✅ Database successfully seeded with AI vectors!")
 
 if __name__ == "__main__":
-    seed()
+    parser = argparse.ArgumentParser(description="Seed the database with application data.")
+    parser.add_argument(
+        "--data",
+        default=None,
+        help="JSON seed data file to load (default: dummy_seed_data.json). "
+             "Use 'official_seed_data.json' for production data.",
+    )
+    args = parser.parse_args()
+    seed(data_file=args.data)
