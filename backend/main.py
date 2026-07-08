@@ -1,11 +1,17 @@
+import logging
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from routers.admin import router as admin_router
 from routers.tickets import router as tickets_router
 from routers.voice import router as voice_router
 from security import get_current_user, CurrentUser, require_operator
-from config import settings 
-import uvicorn   
+from config import settings
+import uvicorn
+
+# Without this, every logger.info() call in the app (voice session FSM
+# transitions, STT/TTS timing, etc.) is silently dropped — the root
+# logger defaults to WARNING with no handler attached.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 app = FastAPI(
     title="AI Help Desk",
