@@ -57,6 +57,11 @@ from services.search import ApplicationSearchEngine
 from services.dependencies import ApplicationDependencyEngine
 from services.llm_client import verify_and_correct_text
 
+import logging
+from voice.session import session_manager
+
+logger = logging.getLogger("routers.tickets")
+
 # Initialize the global instances so they don't load models on every request
 embedder = TextEmbedder()
 classifier = TicketClassifier()
@@ -395,6 +400,21 @@ def confirm_ticket(
 
     # Commit everything in one transaction
     session.commit()
+
+    # R-42: if this ticket came from a voice call, advance the call's FSM
+    # so the caller can be asked about another complaint. Best-effort —
+    # the ticket itself is already committed, so a missing/expired voice
+    # session must never fail this response.
+    if request.voice_session_id:
+        try:
+            session_manager.complete_ticket_and_ask_again(
+                request.voice_session_id, ticket_number,
+            )
+        except ValueError as exc:
+            logger.warning(
+                "Could not advance voice session %s to ASK_ANOTHER_COMPLAINT: %s",
+                request.voice_session_id, exc,
+            )
 
     return TicketConfirmResponse(
         ticket_number=ticket_number,

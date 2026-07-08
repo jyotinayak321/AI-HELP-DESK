@@ -45,6 +45,7 @@ STATIC_PROMPTS = {
     "processing":          "processing.wav",
     "heard_as":            "heard_as.wav",         # "I heard your service number as"
     "is_that_correct":     "is_that_correct.wav",  # "Is that correct?"
+    "ask_another_complaint": "ask_another_complaint.wav",  # R-42: loop for a second ticket
 }
 
 
@@ -178,6 +179,7 @@ FALLBACK_TEXT = {
     "goodbye": "Thank you. Your ticket has been created. Please note your ticket number.",
     "confirm_yes_no": "Please say yes or no.",
     "processing": "Please wait. Your request is being processed.",
+    "ask_another_complaint": "Do you have another complaint to report? Please say yes or no, or press 1 for yes, 2 for no.",
 }
 
 

@@ -44,7 +44,7 @@ from services.llm_client import verify_and_correct_text
 # Phase 2 voice modules
 from voice.stt import SpeechToTextEngine
 from voice.tts import TextToSpeechEngine
-from voice.session import VoiceSessionManager, SessionState, MAX_SERVICE_NUMBER_RETRIES
+from voice.session import SessionState, MAX_SERVICE_NUMBER_RETRIES, session_manager
 from voice.validators import validate_service_number
 from voice.audio import convert_to_wav, detect_silence, detect_format_from_content_type, FrameBuffer
 from voice.vad import StreamingEndpointDetector
@@ -67,14 +67,21 @@ from voice_schemas import (
     VoiceStatusResponse,
     VoiceFallbackRequest,
     VoiceFallbackResponse,
+    VoiceAnotherComplaintResponse,
 )
 
 logger = logging.getLogger("routers.voice")
 
+# Yes/no intent keywords (English, Hindi, Hinglish) — shared by
+# /confirm-audio and /another-complaint, both of which ask the caller
+# a yes/no question and parse the STT transcript for intent.
+YES_WORDS = {"yes", "yeah", "yep", "correct", "right", "haan", "han", "ha", "bilkul", "sahi", "ok", "okay", "confirm"}
+NO_WORDS  = {"no", "nope", "wrong", "incorrect", "nahi", "nein", "nai", "nah", "retry", "again"}
+
 # ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 # Singleton instances (lazy-loaded, matching Phase 1 pattern)
 # ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
-session_manager = VoiceSessionManager()
+# session_manager is imported from voice.session (shared with routers/tickets.py)
 
 # Phase 1 AI singletons ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â reuse the same instances
 embedder = TextEmbedder()
@@ -514,10 +521,7 @@ async def voice_confirm_audio(
     # Remove punctuation so "No." matches "no"
     clean_text = re.sub(r'[^\w\s]', '', text)
 
-    # Detect YES intent
-    YES_WORDS = {"yes", "yeah", "yep", "correct", "right", "haan", "han", "ha", "bilkul", "sahi", "ok", "okay", "confirm"}
-    NO_WORDS  = {"no", "nope", "wrong", "incorrect", "nahi", "nein", "nai", "nah", "retry", "again"}
-
+    # Detect YES/NO intent
     words = set(clean_text.split())
     is_yes = bool(words & YES_WORDS)
     is_no  = bool(words & NO_WORDS)
@@ -557,6 +561,104 @@ async def voice_confirm_audio(
         stt_processing_time_ms=result.processing_time_ms,
     )
 
+
+# =====================================================================
+# 3c. POST /voice/another-complaint — "Do you have another complaint?" (R-42)
+# =====================================================================
+
+@router.post("/another-complaint", response_model=VoiceAnotherComplaintResponse)
+async def voice_another_complaint(
+    session_id: str = Form(...),
+    audio: UploadFile = File(...),
+    current_user: CurrentUser = Depends(require_operator),
+):
+    """
+    After a ticket is created, ask whether the caller has another
+    complaint to report in the same call. Yes loops back to service
+    number capture (re-confirmed, per R-42 design); No ends the call.
+    """
+    session = session_manager.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Voice session not found or expired.")
+
+    if session.state != SessionState.ASK_ANOTHER_COMPLAINT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid state for another-complaint prompt: {session.state.value}",
+        )
+
+    raw_bytes = await audio.read()
+    content_type = audio.content_type or "audio/webm"
+    source_format = detect_format_from_content_type(content_type)
+    wav_bytes = convert_to_wav(raw_bytes, source_format=source_format)
+
+    if detect_silence(wav_bytes, source_format="wav"):
+        return VoiceAnotherComplaintResponse(
+            session_id=session_id,
+            state=SessionState.ASK_ANOTHER_COMPLAINT.value,
+            recognized_text="",
+            wants_another=None,
+            prompt_text="No speech detected. Please say Yes or No.",
+        )
+
+    stt = _get_stt()
+    try:
+        result = stt.transcribe(wav_bytes)
+    except Exception as exc:
+        logger.warning("STT failed during another-complaint for session %s: %s", session_id, exc)
+        return VoiceAnotherComplaintResponse(
+            session_id=session_id,
+            state=SessionState.ASK_ANOTHER_COMPLAINT.value,
+            recognized_text="",
+            wants_another=None,
+            prompt_text="Could not process audio. Please say Yes or No.",
+        )
+
+    text = (result.text or "").lower().strip()
+    logger.info("[another-complaint] session=%s transcript='%s'", session_id, text)
+    clean_text = re.sub(r'[^\w\s]', '', text)
+    words = set(clean_text.split())
+    is_yes = bool(words & YES_WORDS)
+    is_no  = bool(words & NO_WORDS)
+
+    if is_yes and not is_no:
+        session_manager.transition(
+            session_id,
+            SessionState.CAPTURING_SERVICE_NUMBER,
+            svc_retries=0,   # fresh retry budget for the next complaint's service number
+        )
+        return VoiceAnotherComplaintResponse(
+            session_id=session_id,
+            state=SessionState.CAPTURING_SERVICE_NUMBER.value,
+            recognized_text=result.text,
+            wants_another=True,
+            prompt_text=get_prompt_text("ask_service_number"),
+            stt_language=result.language,
+            stt_processing_time_ms=result.processing_time_ms,
+        )
+
+    if is_no and not is_yes:
+        session_manager.transition(session_id, SessionState.COMPLETED)
+        return VoiceAnotherComplaintResponse(
+            session_id=session_id,
+            state=SessionState.COMPLETED.value,
+            recognized_text=result.text,
+            wants_another=False,
+            prompt_text=get_prompt_text("goodbye"),
+            stt_language=result.language,
+            stt_processing_time_ms=result.processing_time_ms,
+        )
+
+    # Unclear — ask again
+    return VoiceAnotherComplaintResponse(
+        session_id=session_id,
+        state=SessionState.ASK_ANOTHER_COMPLAINT.value,
+        recognized_text=result.text,
+        wants_another=None,
+        prompt_text="Sorry, I didn't understand. Please say Yes or No.",
+        stt_language=result.language,
+        stt_processing_time_ms=result.processing_time_ms,
+    )
 
 # =====================================================================
 # 4. POST /voice/complaint ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Upload audio, transcribe & classify
@@ -1063,7 +1165,7 @@ def voice_prompt(
 # =====================================================================
 
 @router.websocket("/ws/vad-stream")
-async def voice_vad_stream(websocket: WebSocket):
+async def voice_vad_stream(websocket: WebSocket, session_id: Optional[str] = Query(default=None)):
     """
     Real-time WebSocket jo continuously audio chunks receive karta hai
     aur Silero VAD se "end of speech" detect karte hi signal bhejta hai.
@@ -1071,9 +1173,20 @@ async def voice_vad_stream(websocket: WebSocket):
     Client (browser) yaha connect karega, phir chhote-chhote raw PCM
     chunks bhejta rahega jab tak server "end_of_speech" event na bheje —
     tab client recording stop kar dega aur poori WAV file normal REST
-    endpoint (/voice/complaint ya /voice/service-number) pe bhej dega.
+    endpoint (/voice/complaint ya /voice/service-number) pe bhej dega —
+    wahi REST endpoints session_id se FSM transition karte hain, is
+    low-level boundary-detector ka kaam sirf timing signal dena hai.
+
+    session_id (R-42) optional hai — diya jaaye to sirf existence
+    validate + log karte hain taaki server logs me pata chale ye
+    stream kis call se belong karta hai.
     """
     await websocket.accept()
+
+    if session_id is not None and session_manager.get_session(session_id) is None:
+        await websocket.send_json({"event": "error", "detail": "Voice session not found or expired."})
+        await websocket.close()
+        return
 
     # Har naye connection ke liye fresh buffer + detector
     frame_buffer = FrameBuffer()
@@ -1088,6 +1201,7 @@ async def voice_vad_stream(websocket: WebSocket):
 
     try:
         await websocket.send_json({"event": "listening"})
+        logger.info("VAD WebSocket connected (session_id=%s)", session_id)
 
         while True:
             # Client se raw PCM bytes receive karo
@@ -1116,7 +1230,7 @@ async def voice_vad_stream(websocket: WebSocket):
                     was_speaking = False
 
     except WebSocketDisconnect:
-        logger.info("VAD WebSocket disconnected normally.")
+        logger.info("VAD WebSocket disconnected normally (session_id=%s).", session_id)
     except Exception as exc:
         logger.error("VAD WebSocket error: %s", exc, exc_info=True)
         try:
@@ -1145,10 +1259,113 @@ async def voice_vad_stream(websocket: WebSocket):
 # Separate endpoint from /ws/vad-stream (not piggybacked) — DTMF entry
 # aur speech entry alag call phases hain, alag connection se decouple
 # rakhna simpler hai.
+#
+# session_id (R-42) diya jaaye to digits seedha voice session FSM me
+# feed hote hain:
+#   - CAPTURING_SERVICE_NUMBER/CONFIRMING_SERVICE_NUMBER: '#' pressed
+#     hone par accumulated digits validate hote hain (REST
+#     /service-number jaisa hi retry/fallback logic, bas STT ki jagah
+#     seedha digits — isliye validate_service_number()'s LLM-based
+#     extract_service_number() yahan skip karte hain, keypad input
+#     already unambiguous hai).
+#   - ASK_ANOTHER_COMPLAINT: '1'/'2' single keypress se turant yes/no
+#     (real IVR menu jaisa, '#' ka wait nahi karta).
+# session_id na diya jaye to sirf raw digit events milte hain, koi FSM
+# side-effect nahi (backward compatible standalone mode).
 # =====================================================================
 
+def _validate_dtmf_service_number(digits: str):
+    """
+    Lightweight 5-digit check for DTMF-entered service numbers.
+    Deliberately does NOT call validate_service_number() — that
+    function's extract_service_number() invokes an LLM to clean up
+    noisy STT transcripts, which keypad digits don't need (they're
+    already unambiguous).
+
+    Returns (is_valid, normalised, error_reason).
+    """
+    if re.match(r"^[0-9]{5}$", digits):
+        return True, digits, None
+    return False, digits, f"Expected exactly 5 digits, got '{digits}' ({len(digits)} digits)."
+
+
+async def _handle_dtmf_service_number(websocket: WebSocket, session_id: str, digits: str) -> None:
+    """Mirrors the REST /service-number validate+retry/fallback flow, for DTMF entry."""
+    is_valid, normalised, error_reason = _validate_dtmf_service_number(digits)
+
+    try:
+        if is_valid:
+            session_manager.transition(
+                session_id,
+                SessionState.CONFIRMING_SERVICE_NUMBER,
+                service_no=normalised,
+            )
+            await websocket.send_json({
+                "event": "service_number_captured",
+                "state": SessionState.CONFIRMING_SERVICE_NUMBER.value,
+                "normalised_service_no": normalised,
+                "prompt_text": render_dynamic_prompt("confirm_service_number", service_number=normalised),
+            })
+            return
+
+        retries = session_manager.increment_svc_retries(session_id)
+        if session_manager.should_fallback(session_id):
+            session_manager.transition(session_id, SessionState.OPERATOR_FALLBACK)
+            await websocket.send_json({
+                "event": "service_number_fallback",
+                "state": SessionState.OPERATOR_FALLBACK.value,
+                "retries_count": retries,
+                "max_retries": MAX_SERVICE_NUMBER_RETRIES,
+                "prompt_text": get_prompt_text("fallback_operator"),
+                "error_reason": error_reason,
+            })
+            return
+
+        await websocket.send_json({
+            "event": "service_number_invalid",
+            "state": SessionState.CAPTURING_SERVICE_NUMBER.value,
+            "retries_count": retries,
+            "max_retries": MAX_SERVICE_NUMBER_RETRIES,
+            "prompt_text": render_dynamic_prompt(
+                "retry_service_number", attempt=retries, max_attempts=MAX_SERVICE_NUMBER_RETRIES,
+            ),
+            "error_reason": error_reason,
+        })
+    except ValueError as exc:
+        # Session expired / invalid transition between the state check
+        # in the caller and here — report, don't crash the WS loop.
+        await websocket.send_json({"event": "error", "detail": str(exc)})
+
+
+async def _handle_dtmf_another_complaint(websocket: WebSocket, session_id: str, digit: str) -> None:
+    """'1' = yes (loop back for another complaint), '2' = no (end call)."""
+    try:
+        if digit == "1":
+            session_manager.transition(
+                session_id,
+                SessionState.CAPTURING_SERVICE_NUMBER,
+                svc_retries=0,   # fresh retry budget for the next complaint
+            )
+            await websocket.send_json({
+                "event": "another_complaint_answered",
+                "wants_another": True,
+                "state": SessionState.CAPTURING_SERVICE_NUMBER.value,
+                "prompt_text": get_prompt_text("ask_service_number"),
+            })
+        else:
+            session_manager.transition(session_id, SessionState.COMPLETED)
+            await websocket.send_json({
+                "event": "another_complaint_answered",
+                "wants_another": False,
+                "state": SessionState.COMPLETED.value,
+                "prompt_text": get_prompt_text("goodbye"),
+            })
+    except ValueError as exc:
+        await websocket.send_json({"event": "error", "detail": str(exc)})
+
+
 @router.websocket("/ws/dtmf-stream")
-async def voice_dtmf_stream(websocket: WebSocket):
+async def voice_dtmf_stream(websocket: WebSocket, session_id: Optional[str] = Query(default=None)):
     """
     Real-time WebSocket jo continuously raw PCM chunks receive karta hai
     aur Goertzel-based DTMF detector se key-press digits nikaal ke
@@ -1157,12 +1374,18 @@ async def voice_dtmf_stream(websocket: WebSocket):
     """
     await websocket.accept()
 
+    if session_id is not None and session_manager.get_session(session_id) is None:
+        await websocket.send_json({"event": "error", "detail": "Voice session not found or expired."})
+        await websocket.close()
+        return
+
     block_buffer = DTMFBlockBuffer()
     detector = StreamingDTMFDetector()
     sequence = ""
 
     try:
         await websocket.send_json({"event": "listening"})
+        logger.info("DTMF WebSocket connected (session_id=%s)", session_id)
 
         while True:
             chunk = await websocket.receive_bytes()
@@ -1173,9 +1396,22 @@ async def voice_dtmf_stream(websocket: WebSocket):
                 if digit is None:
                     continue
 
+                session = session_manager.get_session(session_id) if session_id else None
+
+                # ASK_ANOTHER_COMPLAINT is a single-keypress menu — no '#' needed
+                if session is not None and session.state == SessionState.ASK_ANOTHER_COMPLAINT and digit in ("1", "2"):
+                    await _handle_dtmf_another_complaint(websocket, session_id, digit)
+                    continue
+
                 if digit == "#":
-                    await websocket.send_json({"event": "sequence_complete", "sequence": sequence})
+                    completed_sequence = sequence
                     sequence = ""
+                    await websocket.send_json({"event": "sequence_complete", "sequence": completed_sequence})
+                    if session is not None and session.state in (
+                        SessionState.CAPTURING_SERVICE_NUMBER,
+                        SessionState.CONFIRMING_SERVICE_NUMBER,
+                    ):
+                        await _handle_dtmf_service_number(websocket, session_id, completed_sequence)
                 elif digit == "*":
                     sequence = ""
                     await websocket.send_json({"event": "sequence_cleared"})
@@ -1184,7 +1420,7 @@ async def voice_dtmf_stream(websocket: WebSocket):
                     await websocket.send_json({"event": "digit", "digit": digit, "sequence": sequence})
 
     except WebSocketDisconnect:
-        logger.info("DTMF WebSocket disconnected normally.")
+        logger.info("DTMF WebSocket disconnected normally (session_id=%s).", session_id)
     except Exception as exc:
         logger.error("DTMF WebSocket error: %s", exc, exc_info=True)
         try:

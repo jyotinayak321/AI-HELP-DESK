@@ -188,6 +188,11 @@ class TicketConfirmRequest(BaseModel):
     confirmed_severity: str = Field(..., examples=["high"])
     operator_notes: str = Field(default="", examples=["User confirmed SSO was down"])
     edited_raw_text: Optional[str] = Field(default=None, description="The operator's manually edited complaint text")
+    voice_session_id: Optional[str] = Field(
+        default=None,
+        description="If this ticket originated from a voice call, the voice session ID "
+                    "(R-42) so the call's FSM can advance to ASK_ANOTHER_COMPLAINT.",
+    )
 
 
     # What the AI originally predicted (for learning loop comparison)
