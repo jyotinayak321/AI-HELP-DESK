@@ -39,6 +39,15 @@ export const submitComplaintAudio = async (sessionId, audioBlob) => {
   });
 };
 
+export const submitAnotherComplaintAudio = async (sessionId, audioBlob) => {
+  const formData = new FormData();
+  formData.append('session_id', sessionId);
+  formData.append('audio', audioBlob, 'audio.webm');
+  return api.post('/api/voice/another-complaint', formData, {
+    headers: { 'Content-Type': undefined },
+  });
+};
+
 export const submitFallback = async (sessionId, fallbackData) => {
   return api.post('/api/voice/fallback', {
     session_id: sessionId,

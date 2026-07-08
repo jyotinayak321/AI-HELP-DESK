@@ -59,6 +59,7 @@ from services.llm_client import verify_and_correct_text
 
 import logging
 from voice.session import session_manager
+from voice.prompts import get_prompt_text
 
 logger = logging.getLogger("routers.tickets")
 
@@ -405,11 +406,15 @@ def confirm_ticket(
     # so the caller can be asked about another complaint. Best-effort —
     # the ticket itself is already committed, so a missing/expired voice
     # session must never fail this response.
+    voice_next_state = None
+    voice_prompt_text = None
     if request.voice_session_id:
         try:
             session_manager.complete_ticket_and_ask_again(
                 request.voice_session_id, ticket_number,
             )
+            voice_next_state = "ASK_ANOTHER_COMPLAINT"
+            voice_prompt_text = get_prompt_text("ask_another_complaint")
         except ValueError as exc:
             logger.warning(
                 "Could not advance voice session %s to ASK_ANOTHER_COMPLAINT: %s",
@@ -424,6 +429,9 @@ def confirm_ticket(
         severity=request.confirmed_severity,
         routed_to_team=routed_to,
         message=f"Ticket {ticket_number} created and routed to {routed_to}.",
+        voice_session_id=request.voice_session_id if voice_next_state else None,
+        voice_next_state=voice_next_state,
+        voice_prompt_text=voice_prompt_text,
     )
 
 

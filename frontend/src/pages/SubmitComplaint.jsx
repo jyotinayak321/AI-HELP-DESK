@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { submitIntake } from '../api/tickets.api';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import ErrorMessage from '../components/ui/ErrorMessage';
@@ -7,6 +7,10 @@ import VoiceSessionPanel from '../components/voice/VoiceSessionPanel';
 
 function SubmitComplaint() {
   const navigate = useNavigate();
+  const location = useLocation();
+  // R-42: arriving here after a ticket confirm that wants to loop back
+  // for another complaint in the same call (see ClassifyReview.jsx).
+  const resumeVoiceSession = location.state?.resumeVoiceSession || null;
   const [form, setForm] = useState({
     raw_text: '',
     complainant_service_no: '',
@@ -16,7 +20,7 @@ function SubmitComplaint() {
   });
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
-  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [isVoiceMode, setIsVoiceMode] = useState(!!resumeVoiceSession);
 
   function handleChange(e) {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -88,6 +92,11 @@ async function handleSubmit() {
         <VoiceSessionPanel
           onClassificationComplete={handleVoiceClassificationComplete}
           onCancel={() => setIsVoiceMode(false)}
+          onCallEnded={() => navigate('/tickets')}
+          resumeSessionId={resumeVoiceSession?.session_id}
+          resumeState={resumeVoiceSession?.state}
+          resumePromptText={resumeVoiceSession?.promptText}
+          lastTicketNumber={resumeVoiceSession?.lastTicketNumber}
         />
       ) : (
         <>

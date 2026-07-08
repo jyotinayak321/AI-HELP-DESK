@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { startVoiceSession, submitServiceNumberAudio, submitComplaintAudio, confirmServiceNumber, submitConfirmAudio, submitFallback, fetchAudioBlob } from '../../api/voice.api';
+import { startVoiceSession, submitServiceNumberAudio, submitComplaintAudio, confirmServiceNumber, submitConfirmAudio, submitAnotherComplaintAudio, submitFallback, fetchAudioBlob } from '../../api/voice.api';
 import VoiceRecorder from './VoiceRecorder';
 import TranscriptPanel from './TranscriptPanel';
 
-function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
+const VOICE_API_BASE = 'http://127.0.0.1:8001/api/voice';
+
+function VoiceSessionPanel({ onClassificationComplete, onCancel, onCallEnded, resumeSessionId, resumeState, resumePromptText, lastTicketNumber }) {
   const [session, setSession] = useState({ id: null, state: 'INIT', promptText: 'Starting voice session...', transcript: '', serviceNumber: '', confidence: 0, language: '', latency: 0 });
   const [isProcessing, setIsProcessing] = useState(false);
   const [audioPlaying, setAudioPlaying] = useState(false);
@@ -28,6 +30,16 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
   const initSession = async () => {
     setIsProcessing(true);
     try {
+      // R-42: resuming an existing call (looping for another complaint)
+      // instead of starting a brand-new voice session.
+      if (resumeSessionId) {
+        setSession(prev => ({ ...prev, id: resumeSessionId, state: resumeState, promptText: resumePromptText }));
+        greetingDoneRef.current = true;
+        if (isMounted.current) setIsProcessing(false);
+        await playAudio(`${VOICE_API_BASE}/prompt/ask_another_complaint`);
+        return;
+      }
+
       const res = await startVoiceSession();
       if (!isMounted.current) return;
       setSession(prev => ({ ...prev, id: res.data.session_id, state: res.data.state, promptText: res.data.prompt_text }));
@@ -130,9 +142,23 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         if (!isMounted.current) return;
         setSession(prev => ({ ...prev, state: res.data.state, transcript: res.data.transcript, confidence: res.data.confidence, language: res.data.stt_language, latency: res.data.stt_processing_time_ms, promptText: res.data.prompt_text }));
         if (res.data.state === 'OPERATOR_REVIEW') {
-          onClassificationComplete({ intake_id: res.data.intake_id, is_repeat_caller: false, potential_duplicates: [], fault_type_proposal: res.data.fault_type_proposal, severity_proposal: res.data.severity_proposal, candidates: res.data.candidates }, { raw_text: res.data.transcript, complainant_service_no: session.serviceNumber, complainant_name: '', complainant_unit: '', complainant_rank: '' });
+          onClassificationComplete({ intake_id: res.data.intake_id, is_repeat_caller: false, potential_duplicates: [], fault_type_proposal: res.data.fault_type_proposal, severity_proposal: res.data.severity_proposal, candidates: res.data.candidates }, { raw_text: res.data.transcript, complainant_service_no: session.serviceNumber, complainant_name: '', complainant_unit: '', complainant_rank: '', voice_session_id: session.id });
         } else if (res.data.state === 'CAPTURING_COMPLAINT') {
           await playAudio(`http://127.0.0.1:8001/api/voice/tts?text=${encodeURIComponent(res.data.prompt_text)}`);
+        }
+
+      } else if (session.state === 'ASK_ANOTHER_COMPLAINT') {
+        // R-42: "koi aur complaint hai?" — loop for another ticket, or end the call.
+        const res = await submitAnotherComplaintAudio(session.id, audioBlob);
+        if (!isMounted.current) return;
+        setSession(prev => ({ ...prev, state: res.data.state, transcript: res.data.recognized_text, promptText: res.data.prompt_text, language: res.data.stt_language, latency: res.data.stt_processing_time_ms }));
+        if (res.data.wants_another === true) {
+          await playAudio(`${VOICE_API_BASE}/prompt/ask_service_number`);
+        } else if (res.data.wants_another === false) {
+          await playAudio(`${VOICE_API_BASE}/prompt/goodbye`);
+          if (onCallEnded) onCallEnded();
+        } else {
+          await playAudio(`${VOICE_API_BASE}/tts?text=${encodeURIComponent(res.data.prompt_text)}`);
         }
       }
     } catch (err) {
@@ -141,7 +167,7 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
     } finally {
       if (isMounted.current) setIsProcessing(false);
     }
-  }, [session.id, session.state, session.serviceNumber, playAudio, playSequential, onClassificationComplete]);
+  }, [session.id, session.state, session.serviceNumber, playAudio, playSequential, onClassificationComplete, onCallEnded]);
 
   const handleManualConfirm = async (confirmed) => {
     setIsProcessing(true);
@@ -182,7 +208,7 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
     finally { setIsProcessing(false); }
   };
 
-  const showRecorder = greetingDoneRef.current && ['CAPTURING_SERVICE_NUMBER', 'CAPTURING_COMPLAINT', 'CONFIRMING_SERVICE_NUMBER', 'OPERATOR_REVIEW'].includes(session.state);
+  const showRecorder = greetingDoneRef.current && ['CAPTURING_SERVICE_NUMBER', 'CAPTURING_COMPLAINT', 'CONFIRMING_SERVICE_NUMBER', 'OPERATOR_REVIEW', 'ASK_ANOTHER_COMPLAINT'].includes(session.state);
 
   return (
     <div style={{ background: '#0d1b2e', border: '1px solid rgba(30,144,255,0.3)', borderRadius: 14, padding: 20, marginBottom: 24, boxShadow: '0 0 20px rgba(30,144,255,0.1)' }}>
@@ -193,6 +219,12 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         </span>
         <button onClick={onCancel} style={{ background: 'none', border: 'none', color: '#4d6480', cursor: 'pointer', fontSize: '0.82rem' }}>✕ Cancel</button>
       </div>
+
+      {lastTicketNumber && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 8, padding: '8px 14px', marginBottom: 16, fontSize: '0.82rem', color: '#22c55e' }}>
+          ✓ Ticket <strong style={{ fontFamily: 'monospace' }}>{lastTicketNumber}</strong> created. Continuing the same call...
+        </div>
+      )}
 
       {/* Prompt */}
       <div style={{ background: 'rgba(10,22,40,0.8)', borderLeft: '3px solid #1E90FF', borderRadius: '0 8px 8px 0', padding: '12px 16px', marginBottom: 16 }}>
@@ -245,6 +277,12 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0' }}>
           <div style={{ width: 18, height: 18, border: '2px solid rgba(30,144,255,0.2)', borderTop: '2px solid #1E90FF', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }}></div>
           <span style={{ fontSize: '0.875rem', color: '#4d6480' }}>Initializing...</span>
+        </div>
+      )}
+
+      {session.state === 'COMPLETED' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0' }}>
+          <span style={{ fontSize: '0.875rem', color: '#22c55e' }}>✓ Call ended.</span>
         </div>
       )}
 
