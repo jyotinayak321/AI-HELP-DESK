@@ -82,6 +82,8 @@ class VoiceSessionData:
     fault_type_proposal: Optional[str] = None
     severity_proposal: Optional[str] = None
     candidates: List[Dict[str, Any]] = field(default_factory=list)
+    potential_duplicates: List[Dict[str, Any]] = field(default_factory=list)
+    is_repeat_caller: bool = False
 
     # Final ticket
     ticket_number: Optional[str] = None

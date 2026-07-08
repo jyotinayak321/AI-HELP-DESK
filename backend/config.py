@@ -4,7 +4,7 @@ from functools import lru_cache
 class Settings(BaseSettings):
 
     # -- Database ----------------------------
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/helpdesk_db"
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5433/helpdesk_db"
 
     # -- Server ------------------------------
     HOST: str = "0.0.0.0"
@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     
     
     # VAD (Voice Activity Detection) — Silero VAD
-    VAD_DEVICE: str = "cpu"           # ✅ NEW: "cpu" on home PC, "cuda" on offline GPU PC
+    VAD_DEVICE: str = "cuda"           # ✅ NEW: "cpu" on home PC, "cuda" on offline GPU PC
 
 
     
@@ -50,6 +50,21 @@ class Settings(BaseSettings):
     # Voice session
     VOICE_SESSION_TTL: int = 1800      # seconds (30 min default)
     VOICE_MAX_SVC_RETRIES: int = 3
+
+    # -- Phase 4: LiveKit Media Transport (Q3: runtime backend flag) -
+    # Set LIVEKIT_ENABLED=true to activate WebRTC media transport.
+    # When false, the existing WebSocket/REST audio path remains active.
+    # The frontend reads this flag from the session/start response and
+    # decides whether to join a LiveKit room or use the legacy path.
+    LIVEKIT_ENABLED: bool = True
+    LIVEKIT_URL: str = "ws://localhost:7880"
+    LIVEKIT_API_KEY: str = "helpdesk_key"
+    LIVEKIT_API_SECRET: str = "helpdesk_secret_change_in_production"
+    # Identity used by the AI agent when joining a room as a participant.
+    LIVEKIT_AGENT_IDENTITY: str = "ai-helpdesk-agent"
+    # (Q1) STT concurrency: single lock protects the shared SpeechToTextEngine.
+    # Future: increase to allow a pool when concurrency becomes a bottleneck.
+    LIVEKIT_STT_POOL_SIZE: int = 1
 
     # -- Phase 3: LLM Guardrail & Classification ----
     # The vLLM server URL exposed by the air-gapped environment.

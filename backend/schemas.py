@@ -95,6 +95,11 @@ class DependencyResponse(BaseModel):
 # INTAKE SCHEMAS (POST /api/intakes)
 # =====================================================================
 
+class ReanalyzeRequest(BaseModel):
+    """Payload for POST /api/intakes/{intake_id}/reanalyze"""
+    raw_text: str = Field(..., min_length=5)
+
+
 class IntakeRequest(BaseModel):
     """
     What the operator sends when a caller describes their problem.

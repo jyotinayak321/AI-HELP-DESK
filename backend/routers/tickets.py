@@ -32,6 +32,7 @@ from models import (
 from schemas import (
     IntakeRequest,
     IntakeResponse,
+    ReanalyzeRequest,
     CandidateApp,
     DuplicateInfo,
     TicketConfirmRequest,
@@ -144,132 +145,71 @@ def create_intake(
     session.refresh(intake)
 
     # -----------------------------------------------------------------
-    # 1c. AI PIPELINE — Call Team B's functions
+    # 1c. AI PIPELINE — Call Shared Logic
     # -----------------------------------------------------------------
+    from services.pipeline import run_ai_pipeline
+    fault_type, severity, raw_candidates, potential_duplicates, is_repeat = run_ai_pipeline(
+        session=session,
+        complaint_text=complaint_text,
+        complainant_service_no=request.complainant_service_no,
+    )
 
-    # Step 1: Generate embedding vector from corrected complaint text
-    embedding = embedder.get_embedding(complaint_text)
-
-    # -----------------------------------------------------------------
-    # 1c. SEMANTIC DUPLICATE & MASS OUTAGE CHECK
-    # -----------------------------------------------------------------
-    embedding_str = "[" + ",".join(map(str, embedding)) + "]"
-    
-    # Only look at tickets created in the last 4 hours to prevent stale alerts
-    time_limit = dt_lib.datetime.now(timezone.utc) - timedelta(hours=4)
-    
-    duplicate_query = text("""
-        SELECT t.ticket_number, t.complainant_service_no, l.raw_text, t.status, (l.text_embedding <=> :embedding) AS distance
-        FROM tickets t
-        JOIN learning_examples l ON t.ticket_number = l.ticket_number
-        WHERE t.status != 'resolved' 
-          AND t.created_at >= :time_limit
-          AND (l.text_embedding <=> :embedding) < 0.20
-        ORDER BY distance ASC
-        LIMIT 5
-    """)
-    dupes = session.execute(duplicate_query, {
-        "embedding": embedding_str, 
-        "time_limit": time_limit
-    }).fetchall()
-    
-    potential_duplicates = []
-    is_repeat = False
-    
-    for row in dupes:
-        is_same = (row.complainant_service_no == request.complainant_service_no)
-        dist = float(row.distance)
-        
-        # Dual thresholds: Looser for same user (0.20) to catch repeat complaints,
-        # Tighter for different user (0.10) to prevent false-positive mass outages.
-        if is_same and dist < 0.20:
-            is_repeat = True
-            
-        if (is_same and dist < 0.20) or (not is_same and dist < 0.10):
-            snippet = row.raw_text[:80] + "..." if len(row.raw_text) > 80 else row.raw_text
-            potential_duplicates.append({
-                "ticket_number": row.ticket_number,
-                "complainant_service_no": row.complainant_service_no,
-                "text_snippet": snippet,
-                "status": row.status,
-                "is_same_user": is_same
-            })
-
-    # Step 2: Classify fault type and severity using Hybrid Strategy
-    fault_type = classifier.classify_fault_type(session, complaint_text, embedding)
-    severity = classifier.classify_severity(session, complaint_text, embedding)
-
-    # Step 3: Find candidate applications via vector similarity search
-    raw_candidates = search_engine.search_candidates(session, embedding)
-    
-    enriched_candidates = []
-    for cand in raw_candidates:
-        app_obj = session.get(Application, cand["application_id"])
-        if app_obj:
-            enriched_candidates.append({
-                "application_id": app_obj.id,
-                "application_name": app_obj.name,
-                "confidence_score": cand["score"]
-            })
-
-    # Step 4: Expand dependencies based on fault type (R-10)
-    primary_candidate = enriched_candidates[0] if enriched_candidates else None
-    expanded_deps = []
-    if primary_candidate:
-        dep_ids = dependency_engine.expand_dependencies(
-            db_session=session,
-            primary_app_id=primary_candidate["application_id"],
-            fault_type=fault_type,
-        )
-        for d_id in dep_ids:
-            d_app = session.get(Application, d_id)
-            if d_app:
-                expanded_deps.append({
-                    "application_id": d_id,
-                    "application_name": d_app.name,
-                    "expansion_reason": f"Cascade from {fault_type}"
-                })
-
-    # -----------------------------------------------------------------
-    # 1d. BUILD THE RESPONSE — Merge candidates + expansions
-    # -----------------------------------------------------------------
-    candidates: list[CandidateApp] = []
-
-    # Add direct candidates from vector search
-    for i, cand in enumerate(enriched_candidates):
-        candidates.append(
-            CandidateApp(
-                application_id=cand["application_id"],
-                application_name=cand["application_name"],
-                confidence_score=round(cand["confidence_score"], 4),
-                is_primary=(i == 0),  # Top result is marked as primary
-            )
-        )
-
-    # Add dependency-expanded candidates (avoid duplicates)
-    existing_app_ids = {c.application_id for c in candidates}
-    for dep in expanded_deps:
-        if dep["application_id"] not in existing_app_ids:
-            candidates.append(
-                CandidateApp(
-                    application_id=dep["application_id"],
-                    application_name=dep["application_name"],
-                    confidence_score=0.0,  # Expansion — no direct score
-                    is_primary=False,
-                    expansion_reason=dep.get("expansion_reason"),
-                )
-            )
+    candidates = [CandidateApp(**c) for c in raw_candidates]
+    dupes = [DuplicateInfo(**d) for d in potential_duplicates]
 
     return IntakeResponse(
         intake_id=intake.id,
         corrected_text=complaint_text,
         is_repeat_caller=is_repeat,
-        potential_duplicates=potential_duplicates,
+        potential_duplicates=dupes,
         fault_type_proposal=fault_type,
         severity_proposal=severity,
         candidates=candidates,
     )
 
+
+@router.post("/intakes/{intake_id}/reanalyze", response_model=IntakeResponse)
+def reanalyze_intake(
+    intake_id: int,
+    request: ReanalyzeRequest,
+    session: Session = Depends(get_session),
+    current_user: CurrentUser = Depends(require_operator),
+):
+    """
+    Reruns the AI classification pipeline without creating a new intake.
+    Useful when the operator edits the complaint text.
+    """
+    intake = session.get(Intake, intake_id)
+    if not intake:
+        raise HTTPException(status_code=404, detail="Intake not found")
+
+    guardrail_result = verify_and_correct_text(request.raw_text)
+    if guardrail_result["status"] == "rejected":
+        raise HTTPException(
+            status_code=400,
+            detail=guardrail_result.get("reason", "Complaint was rejected by the guardrail.")
+        )
+    complaint_text = guardrail_result.get("corrected_text", request.raw_text)
+
+    from services.pipeline import run_ai_pipeline
+    fault_type, severity, raw_candidates, potential_duplicates, is_repeat = run_ai_pipeline(
+        session=session,
+        complaint_text=complaint_text,
+        complainant_service_no=intake.complainant_service_no,
+    )
+
+    candidates = [CandidateApp(**c) for c in raw_candidates]
+    dupes = [DuplicateInfo(**d) for d in potential_duplicates]
+
+    return IntakeResponse(
+        intake_id=intake.id,
+        corrected_text=complaint_text,
+        is_repeat_caller=is_repeat,
+        potential_duplicates=dupes,
+        fault_type_proposal=fault_type,
+        severity_proposal=severity,
+        candidates=candidates,
+    )
 
 # =====================================================================
 # 2. POST /api/tickets/confirm — Create ticket from confirmed proposal

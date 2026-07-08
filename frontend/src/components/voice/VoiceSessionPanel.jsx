@@ -2,12 +2,26 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { startVoiceSession, submitServiceNumberAudio, submitComplaintAudio, confirmServiceNumber, submitConfirmAudio, submitFallback, fetchAudioBlob } from '../../api/voice.api';
 import VoiceRecorder from './VoiceRecorder';
 import TranscriptPanel from './TranscriptPanel';
+import LiveKitAudioTransport from './LiveKitAudioTransport';
 
 function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
-  const [session, setSession] = useState({ id: null, state: 'INIT', promptText: 'Starting voice session...', transcript: '', serviceNumber: '', confidence: 0, language: '', latency: 0 });
+  const [session, setSession] = useState({ 
+    id: null, 
+    state: 'INIT', 
+    promptText: 'Starting voice session...', 
+    transcript: '', 
+    serviceNumber: '', 
+    confidence: 0, 
+    language: '', 
+    latency: 0,
+    livekit_enabled: false,
+    livekit_token: null,
+    livekit_url: null,
+  });
   const [isProcessing, setIsProcessing] = useState(false);
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [fallbackData, setFallbackData] = useState({ service_no: '' });
+  const [isGreetingDone, setIsGreetingDone] = useState(false);
 
   const audioPlayerRef  = useRef(new Audio());
   const confirmBlobsRef = useRef([]);
@@ -30,11 +44,20 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
     try {
       const res = await startVoiceSession();
       if (!isMounted.current) return;
-      setSession(prev => ({ ...prev, id: res.data.session_id, state: res.data.state, promptText: res.data.prompt_text }));
-      // REQUIREMENT 1 & 2: Play greeting FULLY — mic tab tak OFF
+      setSession(prev => ({ 
+        ...prev, 
+        id: res.data.session_id, 
+        state: res.data.state, 
+        promptText: res.data.prompt_text,
+        livekit_enabled: res.data.livekit_enabled || false,
+        livekit_token: res.data.livekit_token || null,
+        livekit_url: res.data.livekit_url || null,
+      }));
+      // Play greeting FIRST, regardless of transport
       await playAudio(`http://127.0.0.1:8001/api/voice/prompt/greeting`);
-      // REQUIREMENT 3: Greeting khatam — ab mic on hoga
+      // Greeting finished
       greetingDoneRef.current = true;
+      setIsGreetingDone(true);
     } catch (err) {
       console.error('Session init failed:', err);
       if (isMounted.current) setSession(prev => ({ ...prev, state: 'ERROR', promptText: 'Failed to start session.' }));
@@ -42,6 +65,7 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
       if (isMounted.current) setIsProcessing(false);
     }
   };
+
 
   const stopAllAudio = useCallback(() => {
     playbackIdRef.current++;
@@ -231,14 +255,69 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         </div>
       )}
 
-      {/* Recorder */}
-      {showRecorder && (
-        <VoiceRecorder
-          onRecordingComplete={handleRecordingComplete}
-          onRecordingStart={handleRecordingStart}
-          isProcessing={isProcessing}
-          audioPlaying={audioPlaying}
-        />
+      {/* Audio Transport / Recorder */}
+      {session.livekit_enabled ? (
+        isGreetingDone && (
+          <LiveKitAudioTransport
+            session_id={session.id}
+            livekit_token={session.livekit_token}
+            livekit_url={session.livekit_url}
+            onStateChange={(data) => {
+              setSession(prev => ({
+                ...prev,
+                state: data.state || prev.state,
+                transcript: data.transcript || prev.transcript,
+                promptText: data.prompt_text || prev.promptText,
+                serviceNumber: data.service_no || prev.serviceNumber,
+                confidence: data.stt_confidence || data.confidence || prev.confidence,
+                language: data.stt_language || prev.language,
+                latency: data.stt_processing_time_ms || prev.latency
+              }));
+              
+              if (data.state === 'OPERATOR_REVIEW') {
+                onClassificationComplete(
+                  { 
+                    intake_id: data.intake_id, 
+                    is_repeat_caller: false, 
+                    potential_duplicates: [], 
+                    fault_type_proposal: data.fault_type, 
+                    severity_proposal: data.severity, 
+                    candidates: [] 
+                  }, 
+                  { 
+                    raw_text: data.transcript, 
+                    complainant_service_no: session.serviceNumber, 
+                    complainant_name: '', 
+                    complainant_unit: '', 
+                    complainant_rank: '' 
+                  }
+                );
+              }
+            }}
+            onTranscribed={(data) => {
+              setSession(prev => ({
+                ...prev,
+                transcript: data.text,
+                confidence: data.confidence,
+                language: data.language
+              }));
+            }}
+            onProcessing={(data) => setIsProcessing(true)}
+            onError={(data) => {
+              setSession(prev => ({ ...prev, state: 'ERROR', promptText: data.detail || 'An error occurred' }));
+              setIsProcessing(false);
+            }}
+          />
+        )
+      ) : (
+        showRecorder && (
+          <VoiceRecorder
+            onRecordingComplete={handleRecordingComplete}
+            onRecordingStart={handleRecordingStart}
+            isProcessing={isProcessing}
+            audioPlaying={audioPlaying}
+          />
+        )
       )}
 
       {session.state === 'INIT' && (

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { confirmTicket, confirmMultiTicket } from '../api/tickets.api';
+import { confirmTicket, confirmMultiTicket, reanalyzeIntake } from '../api/tickets.api';
 import { fetchAudioBlob } from '../api/voice.api';
 import { FAULT_TYPES, SEVERITY_LEVELS, SEVERITY_COLOR } from '../constants/enums';
 import ErrorMessage from '../components/ui/ErrorMessage';
@@ -82,9 +82,13 @@ function ClassifyReview() {
   if (!state?.intakeResponse) { navigate('/submit'); return null; }
 
   const { intakeResponse, originalForm, ttsUrl } = state;
-  const { candidates, fault_type_proposal, severity_proposal, is_repeat_caller, potential_duplicates, intake_id } = intakeResponse;
+  
+  const [intakeResp, setIntakeResp] = useState(intakeResponse);
+  const { candidates, fault_type_proposal, severity_proposal, is_repeat_caller, potential_duplicates, intake_id } = intakeResp;
 
   const [editedComplaint, setEditedComplaint] = useState(originalForm.raw_text);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [newSuggestions, setNewSuggestions] = useState(false);
   const audioRef = useRef(null);
 
   useEffect(() => {
@@ -136,6 +140,24 @@ function ClassifyReview() {
   }
   function removeTicket(idx) {
     setTickets(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  async function handleReanalyze() {
+    setReanalyzing(true); setError(null);
+    try {
+      const res = await reanalyzeIntake(intake_id, { raw_text: editedComplaint });
+      setIntakeResp(res.data);
+      setNewSuggestions(true);
+    } catch (e) {
+      setError(e.response?.data?.detail || e.message || 'Re-analyze failed');
+    } finally {
+      setReanalyzing(false);
+    }
+  }
+
+  function applySuggestions() {
+    setTickets([defaultTicket()]);
+    setNewSuggestions(false);
   }
 
   async function handleConfirm() {
@@ -214,7 +236,20 @@ function ClassifyReview() {
       {error && <ErrorMessage message={error} />}
 
       <div style={card}>
-        <div style={cardTitle}>Original Complaint</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+          <div style={cardTitle} style={{ marginBottom: 0, fontWeight: 500, fontSize: '13px', color: 'var(--text-primary)' }}>Original Complaint</div>
+          <button 
+            onClick={handleReanalyze} 
+            disabled={editedComplaint === (intakeResp.corrected_text || originalForm.raw_text) || reanalyzing}
+            style={{ 
+              background: 'transparent', color: 'var(--accent)', border: '1px solid var(--accent)', 
+              borderRadius: '6px', padding: '4px 10px', fontSize: '12px', cursor: (editedComplaint === (intakeResp.corrected_text || originalForm.raw_text) || reanalyzing) ? 'not-allowed' : 'pointer',
+              opacity: (editedComplaint === (intakeResp.corrected_text || originalForm.raw_text) || reanalyzing) ? 0.5 : 1
+            }}
+          >
+            {reanalyzing ? '↻ Re-analyzing...' : '↻ Re-analyze Complaint'}
+          </button>
+        </div>
         <textarea
           value={editedComplaint}
           onChange={(e) => setEditedComplaint(e.target.value)}
@@ -228,14 +263,24 @@ function ClassifyReview() {
 
       <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <div style={cardTitle}>
+          <div style={cardTitle} style={{ marginBottom: 0, fontWeight: 500, fontSize: '13px', color: 'var(--text-primary)' }}>
             {tickets.length === 1 ? 'Confirm Ticket' : `Create ${tickets.length} Tickets from this Intake`}
           </div>
-          {tickets.length > 1 && (
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'var(--surface-2)', padding: '3px 8px', borderRadius: '6px' }}>
-              R-14a: Multi-fault
-            </span>
-          )}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {newSuggestions && (
+              <button 
+                onClick={applySuggestions}
+                style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', cursor: 'pointer' }}
+              >
+                Apply New AI Suggestions
+              </button>
+            )}
+            {tickets.length > 1 && (
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'var(--surface-2)', padding: '3px 8px', borderRadius: '6px' }}>
+                R-14a: Multi-fault
+              </span>
+            )}
+          </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {tickets.map((t, i) => (

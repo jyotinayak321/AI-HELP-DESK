@@ -29,6 +29,27 @@ class VoiceStartResponse(BaseModel):
         description="Whether a pre-recorded audio file is available for this prompt.",
     )
 
+    # ── Phase 4: LiveKit fields (Q2 + Q3) ────────────────────────────────────
+    # Populated only when LIVEKIT_ENABLED=True on the backend.
+    # Frontend reads livekit_enabled to decide whether to join a LiveKit room
+    # (Q3: runtime backend flag — no build-time VITE_ env var needed).
+    livekit_enabled: bool = Field(
+        default=False,
+        description="True when the backend has LiveKit transport enabled.",
+    )
+    livekit_token: Optional[str] = Field(
+        default=None,
+        description="JWT to pass to room.connect() in livekit-client.",
+    )
+    livekit_url: Optional[str] = Field(
+        default=None,
+        description="WebSocket URL of the self-hosted LiveKit server.",
+    )
+    room_name: Optional[str] = Field(
+        default=None,
+        description="LiveKit room name (== session_id throughout the system).",
+    )
+
 
 class VoiceServiceNumberResponse(BaseModel):
     """Response from POST /api/voice/service-number."""
