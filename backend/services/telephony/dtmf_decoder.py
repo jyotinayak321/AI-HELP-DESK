@@ -106,5 +106,99 @@ def main():
     print(f"\nDetected DTMF sequence: {result if result else '(none found)'}\n")
 
 
+# =====================================================================
+# Real-time streaming DTMF (Phase 3, R-43 follow-up)
+# =====================================================================
+# Same Goertzel math as the offline decoder above, but consumes raw PCM
+# byte chunks as they arrive over a WebSocket instead of a finished WAV
+# file. Two pieces, mirroring voice/audio.py's FrameBuffer + voice/vad.py's
+# StreamingEndpointDetector split:
+#   - DTMFBlockBuffer   : bytes -> fixed BLOCK_SIZE sample blocks
+#   - StreamingDTMFDetector : block -> confirmed digit (or None)
+# =====================================================================
+
+MIN_HOLD_BLOCKS = 2  # ~25.6ms of a held tone before we trust it (debounce)
+
+
+class DTMFBlockBuffer:
+    """
+    Streaming PCM bytes ko fixed-size (BLOCK_SIZE-sample) blocks me todta
+    hai, Goertzel ke liye. FrameBuffer (voice/audio.py) jaisa hi kaam
+    karta hai, lekin un-normalised int16-scale samples deta hai kyunki
+    MAGNITUDE_THRESHOLD usi scale pe calibrated hai.
+    """
+
+    def __init__(self, block_size: int = BLOCK_SIZE):
+        self.block_size = block_size
+        self._leftover = np.array([], dtype=np.float64)
+
+    def add_chunk(self, pcm_bytes: bytes):
+        new_samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float64)
+        combined = np.concatenate([self._leftover, new_samples])
+
+        num_full_blocks = len(combined) // self.block_size
+        blocks = []
+        for i in range(num_full_blocks):
+            start = i * self.block_size
+            blocks.append(combined[start : start + self.block_size])
+
+        self._leftover = combined[num_full_blocks * self.block_size :]
+        return blocks
+
+    def reset(self):
+        self._leftover = np.array([], dtype=np.float64)
+
+
+class StreamingDTMFDetector:
+    """
+    Block-by-block DTMF digit detection. Ek "confirmed" digit tabhi
+    emit hota hai jab wahi digit lagatar MIN_HOLD_BLOCKS blocks tak
+    dikhe (transient noise ko real key-press se alag karne ke liye) —
+    aur ek baar emit hone ke baad, wahi digit dobara emit nahi hota
+    jab tak beech me silence/koi doosra tone na aa jaaye (held key
+    barbaar register na ho).
+    """
+
+    def __init__(
+        self,
+        sample_rate: int = SAMPLE_RATE,
+        block_size: int = BLOCK_SIZE,
+        magnitude_threshold: float = MAGNITUDE_THRESHOLD,
+        min_hold_blocks: int = MIN_HOLD_BLOCKS,
+    ):
+        self.sample_rate = sample_rate
+        self.block_size = block_size
+        self.magnitude_threshold = magnitude_threshold
+        self.min_hold_blocks = min_hold_blocks
+        self.reset()
+
+    def reset(self):
+        self._pending_digit = None
+        self._hold_count = 0
+        self._last_emitted_digit = None
+
+    def process_block(self, block: np.ndarray):
+        """Returns the newly confirmed digit (str), or None."""
+        digit = detect_dtmf_in_block(block, self.sample_rate)
+
+        if digit is None:
+            self._pending_digit = None
+            self._hold_count = 0
+            self._last_emitted_digit = None
+            return None
+
+        if digit == self._pending_digit:
+            self._hold_count += 1
+        else:
+            self._pending_digit = digit
+            self._hold_count = 1
+
+        if self._hold_count >= self.min_hold_blocks and digit != self._last_emitted_digit:
+            self._last_emitted_digit = digit
+            return digit
+
+        return None
+
+
 if __name__ == "__main__":
     main()

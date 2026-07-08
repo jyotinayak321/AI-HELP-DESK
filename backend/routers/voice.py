@@ -48,6 +48,9 @@ from voice.session import VoiceSessionManager, SessionState, MAX_SERVICE_NUMBER_
 from voice.validators import validate_service_number
 from voice.audio import convert_to_wav, detect_silence, detect_format_from_content_type, FrameBuffer
 from voice.vad import StreamingEndpointDetector
+
+# Phase 3 telephony modules
+from services.telephony.dtmf_decoder import StreamingDTMFDetector, DTMFBlockBuffer
 from voice.prompts import (
     get_static_prompt_bytes,
     get_prompt_text,
@@ -1116,6 +1119,74 @@ async def voice_vad_stream(websocket: WebSocket):
         logger.info("VAD WebSocket disconnected normally.")
     except Exception as exc:
         logger.error("VAD WebSocket error: %s", exc, exc_info=True)
+        try:
+            await websocket.send_json({"event": "error", "detail": str(exc)})
+        except Exception:
+            pass  # connection already band ho chuki hogi
+
+
+# =====================================================================
+# 12. WS /voice/ws/dtmf-stream — Real-time streaming DTMF detection
+# =====================================================================
+#
+# IMPORTANT: Same raw PCM contract as /ws/vad-stream:
+#   Format:      16-bit signed PCM
+#   Sample rate: 16000 Hz (16kHz)
+#   Channels:    1 (mono)
+#
+# Client → Server: binary audio chunks (bytes)
+# Server → Client: JSON messages:
+#     {"event": "listening"}                          — connection established
+#     {"event": "digit", "digit": "5", "sequence": "5"}   — new key press confirmed
+#     {"event": "sequence_complete", "sequence": "12345"} — caller pressed '#'
+#     {"event": "sequence_cleared"}                       — caller pressed '*'
+#     {"event": "error", "detail": ""}                    — kuch galat hua
+#
+# Separate endpoint from /ws/vad-stream (not piggybacked) — DTMF entry
+# aur speech entry alag call phases hain, alag connection se decouple
+# rakhna simpler hai.
+# =====================================================================
+
+@router.websocket("/ws/dtmf-stream")
+async def voice_dtmf_stream(websocket: WebSocket):
+    """
+    Real-time WebSocket jo continuously raw PCM chunks receive karta hai
+    aur Goertzel-based DTMF detector se key-press digits nikaal ke
+    client ko bhejta hai. '#' se sequence complete hoti hai, '*' se
+    clear hoti hai (standard IVR convention).
+    """
+    await websocket.accept()
+
+    block_buffer = DTMFBlockBuffer()
+    detector = StreamingDTMFDetector()
+    sequence = ""
+
+    try:
+        await websocket.send_json({"event": "listening"})
+
+        while True:
+            chunk = await websocket.receive_bytes()
+            blocks = block_buffer.add_chunk(chunk)
+
+            for block in blocks:
+                digit = detector.process_block(block)
+                if digit is None:
+                    continue
+
+                if digit == "#":
+                    await websocket.send_json({"event": "sequence_complete", "sequence": sequence})
+                    sequence = ""
+                elif digit == "*":
+                    sequence = ""
+                    await websocket.send_json({"event": "sequence_cleared"})
+                else:
+                    sequence += digit
+                    await websocket.send_json({"event": "digit", "digit": digit, "sequence": sequence})
+
+    except WebSocketDisconnect:
+        logger.info("DTMF WebSocket disconnected normally.")
+    except Exception as exc:
+        logger.error("DTMF WebSocket error: %s", exc, exc_info=True)
         try:
             await websocket.send_json({"event": "error", "detail": str(exc)})
         except Exception:
