@@ -799,7 +799,6 @@ def voice_fallback(
 # =====================================================================
 # 6. GET /voice/status ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Query session state
 # =====================================================================
-
 @router.get("/status", response_model=VoiceStatusResponse)
 def voice_status(
     session_id: str = Query(...),
@@ -900,7 +899,7 @@ def voice_char(
         raise HTTPException(
             status_code=404,
             detail=f"No audio clip found for character '{char}'. "
-                   "Run generate_char_clips.py to create missing clips.",
+                "Run generate_char_clips.py to create missing clips.",
         )
 
     with open(clip_path, "rb") as f:
@@ -1039,26 +1038,25 @@ def voice_prompt(
     # Last resort: return the text
     return {"prompt_key": key, "text": fallback_text, "audio_available": False}
 
-
 # =====================================================================
-# 11. WS /voice/ws/vad-stream ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Real-time streaming VAD (end-of-speech detection)
+# 11. WS /voice/ws/vad-stream — Real-time streaming VAD (end-of-speech detection)
 # =====================================================================
 #
-# IMPORTANT: Ye endpoint RAW PCM audio expect karta hai ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
+# IMPORTANT: Ye endpoint RAW PCM audio expect karta hai —
 #   Format:      16-bit signed PCM
 #   Sample rate: 16000 Hz (16kHz)
 #   Channels:    1 (mono)
 #
 # Browser ka MediaRecorder (jo baaki endpoints use karte hain) WebM/Opus
-# deta hai, raw PCM nahi ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â isliye frontend me AudioWorklet/ScriptProcessor
+# deta hai, raw PCM nahi — isliye frontend me AudioWorklet/ScriptProcessor
 # use karna padega jo seedha mic se raw samples nikaale (alag se banega).
 #
-# Client ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Server: binary audio chunks (bytes)
-# Server ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Client: JSON messages:
-#     {"event": "listening"}           ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â connection established
-#     {"event": "speech_started"}      ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â user ne bolna shuru kiya
-#     {"event": "end_of_speech"}       ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â user chup ho gaya, recording stop karo
-#     {"event": "error", "detail": ""} ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â kuch galat hua
+# Client → Server: binary audio chunks (bytes)
+# Server → Client: JSON messages:
+#     {"event": "listening"}           — connection established
+#     {"event": "speech_started"}      — user ne bolna shuru kiya
+#     {"event": "end_of_speech"}       — user chup ho gaya, recording stop karo
+#     {"event": "error", "detail": ""} — kuch galat hua
 # =====================================================================
 
 @router.websocket("/ws/vad-stream")
@@ -1068,7 +1066,7 @@ async def voice_vad_stream(websocket: WebSocket):
     aur Silero VAD se "end of speech" detect karte hi signal bhejta hai.
 
     Client (browser) yaha connect karega, phir chhote-chhote raw PCM
-    chunks bhejta rahega jab tak server "end_of_speech" event na bheje ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
+    chunks bhejta rahega jab tak server "end_of_speech" event na bheje —
     tab client recording stop kar dega aur poori WAV file normal REST
     endpoint (/voice/complaint ya /voice/service-number) pe bhej dega.
     """
@@ -1077,7 +1075,7 @@ async def voice_vad_stream(websocket: WebSocket):
     # Har naye connection ke liye fresh buffer + detector
     frame_buffer = FrameBuffer()
     detector = StreamingEndpointDetector(
-        silence_duration_ms=2500,
+        silence_duration_ms=800,    # ✅ FIXED: 2500 → 800 (yehi asli delay tha)
         speech_threshold=0.4,
         min_speech_ms=300,
     )
