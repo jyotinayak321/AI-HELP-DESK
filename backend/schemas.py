@@ -211,6 +211,13 @@ class TicketConfirmResponse(BaseModel):
     routed_to_team: str
     message: str = "Ticket created successfully"
 
+    # Populated only when the request carried a voice_session_id and the
+    # voice call FSM successfully advanced (R-42), so the frontend knows
+    # whether to loop back into the voice panel for another complaint.
+    voice_session_id: Optional[str] = None
+    voice_next_state: Optional[str] = None
+    voice_prompt_text: Optional[str] = None
+
 
 # =====================================================================
 # TICKET LIST / DASHBOARD SCHEMAS (GET /api/tickets)

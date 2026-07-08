@@ -156,9 +156,27 @@ function ClassifyReview() {
           predicted_fault_type: fault_type_proposal,
           predicted_severity:   severity_proposal,
           edited_raw_text:      editedComplaint,
+          voice_session_id:     originalForm.voice_session_id || undefined,
         };
         const res = await confirmTicket(payload);
-        navigate('/tickets', { state: { newTicket: res.data } });
+
+        // R-42: this ticket came from a voice call that still wants to
+        // ask "koi aur complaint hai?" — loop back into the voice panel
+        // instead of going to the tickets list.
+        if (res.data.voice_next_state === 'ASK_ANOTHER_COMPLAINT') {
+          navigate('/submit', {
+            state: {
+              resumeVoiceSession: {
+                session_id: res.data.voice_session_id,
+                state: res.data.voice_next_state,
+                promptText: res.data.voice_prompt_text,
+                lastTicketNumber: res.data.ticket_number,
+              },
+            },
+          });
+        } else {
+          navigate('/tickets', { state: { newTicket: res.data } });
+        }
       } else {
         const payload = {
           intake_id,
