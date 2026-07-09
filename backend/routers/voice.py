@@ -171,14 +171,12 @@ async def voice_start(
 
         except Exception as exc:
             # Non-fatal: session continues on legacy WebSocket/REST path.
-            import traceback
-            with open("livekit_error.log", "w") as f:
-                f.write(traceback.format_exc())
-            
             logger.error(
                 "LiveKit setup failed for session %s: %s — "
                 "continuing on legacy audio path.",
-                session.session_id, exc, exc_info=True,
+                session.session_id,
+                exc,
+                exc_info=True,
             )
 
     return VoiceStartResponse(
