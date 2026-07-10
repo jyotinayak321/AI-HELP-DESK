@@ -25,9 +25,9 @@ sqlmodel==0.0.38
 # AI / ML Core (Torch ecosystem — CUDA 12.8 build)
 # ==========================================
 
-# torch==2.11.0+cu128
-# torchvision==0.26.0+cu128
-# torchaudio==2.11.0+cu128
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
+torchaudio==2.11.0+cu128
 numpy==2.4.4
 accelerate==1.14.0
 sentence-transformers==5.6.0
@@ -47,10 +47,11 @@ faster-whisper==1.0.3
 pydub==0.25.1
 pyttsx3==2.90
 ctranslate2==4.8.1
+onnxruntime==1.27.0
 onnxruntime-gpu==1.27.0
 protobuf==7.35.1
 flatbuffers==25.12.19
-
+pywin32; sys_platform == "win32"
 # ==========================================
 # Phase 4: LiveKit Media Transport
 # ==========================================

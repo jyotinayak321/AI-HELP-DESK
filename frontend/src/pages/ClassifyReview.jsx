@@ -79,17 +79,35 @@ function ClassifyReview() {
   const { state } = useLocation();
   const navigate  = useNavigate();
 
-  if (!state?.intakeResponse) { navigate('/submit'); return null; }
+  const { intakeResponse, originalForm, ttsUrl } = state || {};
 
-  const { intakeResponse, originalForm, ttsUrl } = state;
-  
-  const [intakeResp, setIntakeResp] = useState(intakeResponse);
-  const { candidates, fault_type_proposal, severity_proposal, is_repeat_caller, potential_duplicates, intake_id } = intakeResp;
-
-  const [editedComplaint, setEditedComplaint] = useState(originalForm.raw_text);
+  // ── All hooks MUST run unconditionally (Rules of Hooks) ──────────────────
+  const [intakeResp, setIntakeResp] = useState(intakeResponse || {});
+  const [editedComplaint, setEditedComplaint] = useState(originalForm?.raw_text || '');
   const [reanalyzing, setReanalyzing] = useState(false);
   const [newSuggestions, setNewSuggestions] = useState(false);
   const audioRef = useRef(null);
+
+  const { candidates: rawCandidates, fault_type_proposal, severity_proposal, is_repeat_caller, potential_duplicates, intake_id } = intakeResp;
+  const candidates = rawCandidates || [];
+
+  const defaultTicket = () => ({
+    selectedAppId: candidates.find(c => c.is_primary)?.application_id ?? candidates[0]?.application_id ?? null,
+    relatedAppIds: candidates.filter(c => !c.is_primary).map(c => c.application_id),
+    faultType: fault_type_proposal || 'other',
+    severity: severity_proposal || 'normal',
+    notes: '',
+    noMatch: false,
+  });
+
+  const [tickets,  setTickets]  = useState(() => [defaultTicket()]);
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState(null);
+
+  // Redirect if there's no intake data (e.g. navigated here directly)
+  useEffect(() => {
+    if (!intakeResponse) navigate('/submit', { replace: true });
+  }, [intakeResponse, navigate]);
 
   useEffect(() => {
     let isMounted = true;
@@ -116,21 +134,11 @@ function ClassifyReview() {
     };
   }, [ttsUrl]);
 
+  // Guard: render nothing while redirecting
+  if (!intakeResponse) return null;
+
   const sameUserDupes = (potential_duplicates || []).filter(d => d.is_same_user);
   const diffUserDupes = (potential_duplicates || []).filter(d => !d.is_same_user);
-
-  const defaultTicket = () => ({
-    selectedAppId: candidates.find(c => c.is_primary)?.application_id ?? candidates[0]?.application_id ?? null,
-    relatedAppIds: candidates.filter(c => !c.is_primary).map(c => c.application_id),
-    faultType: fault_type_proposal,
-    severity: severity_proposal,
-    notes: '',
-    noMatch: false,
-  });
-
-  const [tickets,  setTickets]  = useState([defaultTicket()]);
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState(null);
 
   function updateTicket(idx, updated) {
     setTickets(prev => prev.map((t, i) => i === idx ? updated : t));
@@ -237,7 +245,7 @@ function ClassifyReview() {
 
       <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-          <div style={cardTitle} style={{ marginBottom: 0, fontWeight: 500, fontSize: '13px', color: 'var(--text-primary)' }}>Original Complaint</div>
+          <div style={{ ...cardTitle, marginBottom: 0, fontWeight: 500, fontSize: '13px', color: 'var(--text-primary)' }}>Original Complaint</div>
           <button 
             onClick={handleReanalyze} 
             disabled={editedComplaint === (intakeResp.corrected_text || originalForm.raw_text) || reanalyzing}

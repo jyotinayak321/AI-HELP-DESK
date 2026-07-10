@@ -6,7 +6,10 @@ from routers.voice import router as voice_router
 from routers.livekit import router as livekit_router   # Phase 4: LiveKit transport
 from security import get_current_user, CurrentUser, require_operator
 from config import settings
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import uvicorn
+import os
 
 app = FastAPI(
     title="AI Help Desk",
@@ -45,6 +48,16 @@ def get_me(user: CurrentUser = Depends(get_current_user)):
         "managed_team": user.managed_team,
     }
 
+
+# Mount Frontend if exists (Airgapped Deployment)
+frontend_dist_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
+if os.path.isdir(frontend_dist_path):
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist_path, "assets")), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_frontend(full_path: str):
+        # Serve index.html for all other routes to support React Router
+        return FileResponse(os.path.join(frontend_dist_path, "index.html"))
 
 if __name__ == "__main__":
     uvicorn.run(

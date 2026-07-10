@@ -4,7 +4,7 @@ import numpy as np
 import sounddevice as sd
 import websockets
 
-WS_URL = "ws://127.0.0.1:8000/api/voice/ws/vad-stream"
+WS_URL = "ws://192.168.1.34:8000/api/voice/ws/vad-stream"
 SAMPLE_RATE = 16000
 CHUNK_SAMPLES = 1600
 

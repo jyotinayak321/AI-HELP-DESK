@@ -143,6 +143,8 @@ class VoiceComplaintResponse(BaseModel):
     fault_type_proposal: Optional[str] = None
     severity_proposal: Optional[str] = None
     candidates: List[VoiceCandidateApp] = Field(default_factory=list)
+    potential_duplicates: list = Field(default_factory=list)
+    is_repeat_caller: bool = False
 
     # Prompt for operator
     prompt_text: str = ""

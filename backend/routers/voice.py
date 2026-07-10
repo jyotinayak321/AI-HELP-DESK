@@ -731,6 +731,8 @@ async def voice_complaint(
         fault_type_proposal=result_data.fault_type,
         severity_proposal=result_data.severity,
         candidates=result_data.candidates or [],
+        potential_duplicates=result_data.potential_duplicates or [],
+        is_repeat_caller=result_data.is_repeat_caller or False,
         prompt_text=result_data.prompt_text,
     )
 

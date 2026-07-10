@@ -11,7 +11,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://127.0.0.1:8001',
+  baseURL: import.meta.env.VITE_API_URL || 'http://192.168.1.34:8001',
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -19,7 +19,7 @@ const api = axios.create({
 // This reads the token from the OIDC session storage key that react-oidc-context uses.
 api.interceptors.request.use((config) => {
   // react-oidc-context stores the user in sessionStorage with a key like:
-  // "oidc.user:http://localhost:8080/realms/ai-helpdesk:helpdesk-frontend"
+  // "oidc.user:http://192.168.1.34:8080/realms/ai-helpdesk:helpdesk-frontend"
   const oidcKey = Object.keys(sessionStorage).find(
     (k) => k.startsWith('oidc.user:')
   );

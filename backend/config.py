@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # Set to True to enforce JWT tokens on all routes.
     # Keep False during development if Keycloak is not running.
     AUTH_ENABLED: bool = True
-    KEYCLOAK_URL: str = "http://localhost:8080"
+    KEYCLOAK_URL: str = "http://192.168.1.34:8080"
     KEYCLOAK_REALM: str = "ai-helpdesk"
     KEYCLOAK_CLIENT_ID: str = "helpdesk-frontend"
 
@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     STT_MODEL_SIZE: str = "medium"
     STT_DEVICE: str = "auto"          # "auto", "cuda", "cpu"
     STT_COMPUTE_TYPE: str = "default" # "default", "float16", "int8", "float32"
-    STT_KEEP_MODEL_LOADED: bool = False    #True  = keep in memory (offline GPU PC, faster response)
+    STT_KEEP_MODEL_LOADED: bool = True    #True  = keep in memory (offline GPU PC, faster response)
     
     
     # VAD (Voice Activity Detection) — Silero VAD
@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     # The frontend reads this flag from the session/start response and
     # decides whether to join a LiveKit room or use the legacy path.
     LIVEKIT_ENABLED: bool = True
-    LIVEKIT_URL: str = "ws://localhost:7880"
+    LIVEKIT_URL: str = "ws://192.168.1.34:7880"
     LIVEKIT_API_KEY: str = "helpdesk_key"
     LIVEKIT_API_SECRET: str = "helpdesk_secret_change_in_production"
     # Identity used by the AI agent when joining a room as a participant.

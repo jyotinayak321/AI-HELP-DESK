@@ -65,9 +65,15 @@ export const fetchAudioBlob = async (url) => {
 
 export const getTTSUrl = (text, normalise = false) => {
   const params = new URLSearchParams({ text, normalise: normalise ? 'true' : 'false' });
-  return `http://127.0.0.1:8001/api/voice/tts?${params.toString()}`;
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://192.168.1.34:8001';
+  return `${baseUrl}/api/voice/tts?${params.toString()}`;
 };
 
 export const getPromptUrl = (key) => {
-  return `http://127.0.0.1:8001/api/voice/prompt/${key}`;
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://192.168.1.34:8001';
+  return `${baseUrl}/api/voice/prompt/${key}`;
 };
+
+/** Manually trigger end-of-speech for a LiveKit session (Stop & Submit button). */
+export const flushLiveKitSpeech = (sessionId) =>
+  api.post(`/api/livekit/flush/${sessionId}`);

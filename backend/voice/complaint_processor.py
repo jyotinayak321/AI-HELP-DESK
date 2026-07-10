@@ -60,6 +60,8 @@ class ComplaintProcessingResult:
     fault_type: Optional[str] = None
     severity: Optional[str] = None
     candidates: Optional[List[VoiceCandidateApp]] = None
+    potential_duplicates: Optional[list] = None
+    is_repeat_caller: bool = False
 
 
 def process_complaint_transcript(
@@ -159,4 +161,6 @@ def process_complaint_transcript(
         fault_type=fault_type,
         severity=severity,
         candidates=enriched_candidates,
+        potential_duplicates=potential_duplicates,
+        is_repeat_caller=is_repeat,
     )

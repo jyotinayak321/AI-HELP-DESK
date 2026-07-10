@@ -54,7 +54,7 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         livekit_url: res.data.livekit_url || null,
       }));
       // Play greeting FIRST, regardless of transport
-      await playAudio(`http://127.0.0.1:8001/api/voice/prompt/greeting`);
+      await playAudio(`${import.meta.env.VITE_API_URL || 'http://192.168.1.34:8001'}/api/voice/prompt/greeting`);
       // Greeting finished
       greetingDoneRef.current = true;
       setIsGreetingDone(true);
@@ -132,21 +132,21 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         const res = await submitConfirmAudio(session.id, audioBlob);
         if (!isMounted.current) return;
         setSession(prev => ({ ...prev, state: res.data.state, transcript: res.data.recognized_text, promptText: res.data.prompt_text, language: res.data.stt_language, latency: res.data.stt_processing_time_ms }));
-        if (res.data.state === 'CAPTURING_COMPLAINT') await playAudio(`http://127.0.0.1:8001/api/voice/prompt/ask_complaint`);
-        else if (res.data.state === 'CAPTURING_SERVICE_NUMBER') await playAudio(`http://127.0.0.1:8001/api/voice/prompt/ask_service_number`);
+        if (res.data.state === 'CAPTURING_COMPLAINT') await playAudio(`${import.meta.env.VITE_API_URL || 'http://192.168.1.34:8001'}/api/voice/prompt/ask_complaint`);
+        else if (res.data.state === 'CAPTURING_SERVICE_NUMBER') await playAudio(`${import.meta.env.VITE_API_URL || 'http://192.168.1.34:8001'}/api/voice/prompt/ask_service_number`);
 
       } else if (session.state === 'CAPTURING_SERVICE_NUMBER') {
         const res = await submitServiceNumberAudio(session.id, audioBlob);
         if (!isMounted.current) return;
         setSession(prev => ({ ...prev, state: res.data.state, transcript: res.data.recognized_text, serviceNumber: res.data.normalised_service_no, confidence: res.data.confidence, language: res.data.stt_language, latency: res.data.stt_processing_time_ms, promptText: res.data.prompt_text }));
         if (res.data.state === 'CONFIRMING_SERVICE_NUMBER' && res.data.is_valid) {
-          const BASE = 'http://127.0.0.1:8001/api/voice';
+          const BASE = `${import.meta.env.VITE_API_URL || 'http://192.168.1.34:8001'}/api/voice`;
           const blobs = await playSequential([`${BASE}/prompt/heard_as`, `${BASE}/spell/${encodeURIComponent(res.data.normalised_service_no)}`, `${BASE}/prompt/is_that_correct`, `${BASE}/prompt/confirm_yes_no`]);
           confirmBlobsRef.current = blobs;
         } else if (res.data.state === 'CAPTURING_SERVICE_NUMBER') {
-          await playAudio(`http://127.0.0.1:8001/api/voice/prompt/retry_service`);
+          await playAudio(`${import.meta.env.VITE_API_URL || 'http://192.168.1.34:8001'}/api/voice/prompt/retry_service`);
         } else if (res.data.state === 'OPERATOR_FALLBACK') {
-          await playAudio(`http://127.0.0.1:8001/api/voice/prompt/fallback_operator`);
+          await playAudio(`${import.meta.env.VITE_API_URL || 'http://192.168.1.34:8001'}/api/voice/prompt/fallback_operator`);
         }
 
       } else if (session.state === 'CAPTURING_COMPLAINT') {
@@ -154,9 +154,9 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
         if (!isMounted.current) return;
         setSession(prev => ({ ...prev, state: res.data.state, transcript: res.data.transcript, confidence: res.data.confidence, language: res.data.stt_language, latency: res.data.stt_processing_time_ms, promptText: res.data.prompt_text }));
         if (res.data.state === 'OPERATOR_REVIEW') {
-          onClassificationComplete({ intake_id: res.data.intake_id, is_repeat_caller: false, potential_duplicates: [], fault_type_proposal: res.data.fault_type_proposal, severity_proposal: res.data.severity_proposal, candidates: res.data.candidates }, { raw_text: res.data.transcript, complainant_service_no: session.serviceNumber, complainant_name: '', complainant_unit: '', complainant_rank: '' });
+          onClassificationComplete({ intake_id: res.data.intake_id, is_repeat_caller: res.data.is_repeat_caller || false, potential_duplicates: res.data.potential_duplicates || [], fault_type_proposal: res.data.fault_type_proposal, severity_proposal: res.data.severity_proposal, candidates: res.data.candidates }, { raw_text: res.data.transcript, complainant_service_no: session.serviceNumber, complainant_name: '', complainant_unit: '', complainant_rank: '' });
         } else if (res.data.state === 'CAPTURING_COMPLAINT') {
-          await playAudio(`http://127.0.0.1:8001/api/voice/tts?text=${encodeURIComponent(res.data.prompt_text)}`);
+          await playAudio(`${import.meta.env.VITE_API_URL || 'http://192.168.1.34:8001'}/api/voice/tts?text=${encodeURIComponent(res.data.prompt_text)}`);
         }
       }
     } catch (err) {
@@ -172,8 +172,8 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
     try {
       const res = await confirmServiceNumber(session.id, confirmed);
       setSession(prev => ({ ...prev, state: res.data.state, promptText: res.data.prompt_text, transcript: '' }));
-      if (confirmed) await playAudio(`http://127.0.0.1:8001/api/voice/prompt/ask_complaint`);
-      else await playAudio(`http://127.0.0.1:8001/api/voice/prompt/ask_service_number`);
+      if (confirmed) await playAudio(`${import.meta.env.VITE_API_URL || 'http://192.168.1.34:8001'}/api/voice/prompt/ask_complaint`);
+      else await playAudio(`${import.meta.env.VITE_API_URL || 'http://192.168.1.34:8001'}/api/voice/prompt/ask_service_number`);
     } catch (err) { console.error(err); }
     finally { setIsProcessing(false); }
   };
@@ -201,12 +201,73 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
     try {
       const res = await submitFallback(session.id, fallbackData);
       setSession(prev => ({ ...prev, state: res.data.state, promptText: res.data.prompt_text, serviceNumber: res.data.service_no, transcript: '' }));
-      await playAudio(`http://127.0.0.1:8001/api/voice/prompt/ask_complaint`);
+      await playAudio(`${import.meta.env.VITE_API_URL || 'http://192.168.1.34:8001'}/api/voice/prompt/ask_complaint`);
     } catch (err) { console.error(err); }
     finally { setIsProcessing(false); }
   };
 
   const showRecorder = greetingDoneRef.current && ['CAPTURING_SERVICE_NUMBER', 'CAPTURING_COMPLAINT', 'CONFIRMING_SERVICE_NUMBER', 'OPERATOR_REVIEW'].includes(session.state);
+
+  // Keep a ref to onClassificationComplete so it doesn't become a dependency
+  // of the memoized LiveKit callbacks (avoids re-creating them on parent re-renders).
+  const onClassificationCompleteRef = useRef(onClassificationComplete);
+  useEffect(() => { onClassificationCompleteRef.current = onClassificationComplete; }, [onClassificationComplete]);
+
+  const sessionServiceNumberRef = useRef(session.serviceNumber);
+  useEffect(() => { sessionServiceNumberRef.current = session.serviceNumber; }, [session.serviceNumber]);
+
+  // Stable callbacks — these never change reference, so LiveKitAudioTransport's
+  // useEffect will NOT re-run (and tear down the WS) on every render.
+  const handleLiveKitStateChange = useCallback((data) => {
+    setSession(prev => ({
+      ...prev,
+      state: data.state || prev.state,
+      transcript: data.transcript || prev.transcript,
+      promptText: data.prompt_text || prev.promptText,
+      serviceNumber: data.service_no || prev.serviceNumber,
+      confidence: data.stt_confidence || data.confidence || prev.confidence,
+      language: data.stt_language || prev.language,
+      latency: data.stt_processing_time_ms || prev.latency,
+    }));
+    if (data.state === 'OPERATOR_REVIEW') {
+      onClassificationCompleteRef.current(
+        {
+          intake_id: data.intake_id,
+          is_repeat_caller: data.is_repeat_caller || false,
+          potential_duplicates: data.potential_duplicates || [],
+          fault_type_proposal: data.fault_type,
+          severity_proposal: data.severity,
+          candidates: data.candidates || [],
+        },
+        {
+          raw_text: data.transcript,
+          complainant_service_no: sessionServiceNumberRef.current,
+          complainant_name: '',
+          complainant_unit: '',
+          complainant_rank: '',
+        }
+      );
+    }
+  }, []); // no deps — reads latest values via refs or functional state updates
+
+  const handleLiveKitTranscribed = useCallback((data) => {
+    setSession(prev => ({
+      ...prev,
+      transcript: data.text,
+      confidence: data.confidence,
+      language: data.language,
+    }));
+  }, []);
+
+  const handleLiveKitProcessing = useCallback(() => {
+    setIsProcessing(true);
+  }, []);
+
+  const handleLiveKitError = useCallback((data) => {
+    setSession(prev => ({ ...prev, state: 'ERROR', promptText: data.detail || 'An error occurred' }));
+    setIsProcessing(false);
+  }, []);
+
 
   return (
     <div style={{ background: '#0d1b2e', border: '1px solid rgba(30,144,255,0.3)', borderRadius: 14, padding: 20, marginBottom: 24, boxShadow: '0 0 20px rgba(30,144,255,0.1)' }}>
@@ -262,51 +323,11 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel }) {
             session_id={session.id}
             livekit_token={session.livekit_token}
             livekit_url={session.livekit_url}
-            onStateChange={(data) => {
-              setSession(prev => ({
-                ...prev,
-                state: data.state || prev.state,
-                transcript: data.transcript || prev.transcript,
-                promptText: data.prompt_text || prev.promptText,
-                serviceNumber: data.service_no || prev.serviceNumber,
-                confidence: data.stt_confidence || data.confidence || prev.confidence,
-                language: data.stt_language || prev.language,
-                latency: data.stt_processing_time_ms || prev.latency
-              }));
-              
-              if (data.state === 'OPERATOR_REVIEW') {
-                onClassificationComplete(
-                  { 
-                    intake_id: data.intake_id, 
-                    is_repeat_caller: false, 
-                    potential_duplicates: [], 
-                    fault_type_proposal: data.fault_type, 
-                    severity_proposal: data.severity, 
-                    candidates: [] 
-                  }, 
-                  { 
-                    raw_text: data.transcript, 
-                    complainant_service_no: session.serviceNumber, 
-                    complainant_name: '', 
-                    complainant_unit: '', 
-                    complainant_rank: '' 
-                  }
-                );
-              }
-            }}
-            onTranscribed={(data) => {
-              setSession(prev => ({
-                ...prev,
-                transcript: data.text,
-                confidence: data.confidence,
-                language: data.language
-              }));
-            }}
-            onProcessing={(data) => setIsProcessing(true)}
-            onError={(data) => {
-              setSession(prev => ({ ...prev, state: 'ERROR', promptText: data.detail || 'An error occurred' }));
-              setIsProcessing(false);
-            }}
+            onStateChange={handleLiveKitStateChange}
+            onTranscribed={handleLiveKitTranscribed}
+            onProcessing={handleLiveKitProcessing}
+            onError={handleLiveKitError}
+            stopTts={stopAllAudio}
           />
         )
       ) : (
