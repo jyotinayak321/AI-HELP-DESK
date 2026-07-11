@@ -1,0 +1,41 @@
+# livekit-config.yaml — AI Help Desk Self-Hosted LiveKit Configuration
+# Air-gapped deployment: no external TURN, no telemetry, in-process auth.
+#
+# Ports:
+#   7880  — HTTP / WebSocket (main endpoint)
+#   7881  — TCP fallback for WebRTC
+#   7882  — UDP (WebRTC media traffic)
+
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  # Use the machine's LAN IP; no internet required.
+  # On a LAN, all participants connect directly — TURN is unnecessary.
+  use_external_ip: false
+
+# In-process API key authentication.
+# These MUST match LIVEKIT_API_KEY and LIVEKIT_API_SECRET in config.py / .env
+keys:
+  helpdesk_key: helpdesk_secret_change_in_production
+
+# Disable TURN relay server — air-gapped LAN peers connect directly via UDP.
+turn:
+  enabled: false
+
+# Logging
+logging:
+  level: info
+  pion_level: error   # Suppress verbose WebRTC ICE logs
+
+# Room settings
+room:
+  # Auto-delete empty rooms after 5 minutes (prevents stale room accumulation)
+  empty_timeout: 300
+  # Maximum participants per room (1 caller + 1 AI agent = 2)
+  max_participants: 10
+
+# Disable telemetry — air-gapped machine has no internet
+# telemetry:
+#   api_key: ""
