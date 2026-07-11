@@ -1,4 +1,4 @@
-# #####python replace_ips.py <AIRGAPPED_PC_IP> 192.168.1.34
+###### python replace_ips.py <PC_IP> 192.168.1.34
 
 
 import os
