@@ -1,0 +1,11 @@
+venv/
+venv311/
+venv_new/
+__pycache__/
+*.pyc
+wheels_offline_gpu/
+wheels/
+.env
+local_models/
+.vscode/
+.idea/

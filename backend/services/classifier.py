@@ -1,4 +1,4 @@
-﻿import os
+import os
 from typing import Optional, List
 from sqlmodel import Session, select
 from sqlalchemy import text

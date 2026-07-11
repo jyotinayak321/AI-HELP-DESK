@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+backend/local_models/
+
+.vite/
+node_modules/
+
+"offline_transfer.zip" 
+"offline_transfer/" 
+"offline_transfer/" 
