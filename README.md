@@ -14,7 +14,7 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 
 ╔════════════════════════════════════════════════════════════════════════╗
 ║                    AI HELP DESK — SYSTEM ARCHITECTURE                 ║
-║                    Fully Offline / Air-Gapped System                  ║
+║                Fully Offline / Air-Gapped System (Phases 1–4)         ║
 ╚════════════════════════════════════════════════════════════════════════╝
 
 
@@ -22,15 +22,15 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 │                        LAYER 1 — PRESENTATION                        │
 │                         React + Vite SPA                              │
 │                                                                      │
-│  • Complaint Submission Interface                                    │
+│  • Complaint Submission Interface (text + voice)                     │
 │  • Admin Application Registry                                        │
-│  • Ticket Dashboard & Tracking                                       │
+│  • Ticket Dashboard, Team Queue & Tracking                           │
 │  • AI Analysis Display                                               │
+│  • Keycloak Login (react-oidc-context)                               │
 └──────────────────────────────────────────────────────────────────────┘
-                                │
-                                │ HTTPS / REST + JSON
-                                ▼
-
+                    │                              │
+                    │ HTTPS / REST + JSON          │ WebRTC (audio)
+                    ▼                              ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                        LAYER 2 — API & BUSINESS LOGIC                │
 │                    FastAPI + Python 3.11 + Uvicorn                   │
@@ -38,44 +38,49 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 │  main.py                                                             │
 │      │                                                               │
 │      ├── config.py        → Environment & Settings                   │
+│      ├── security.py      → Keycloak JWT verification (JWKS)         │
 │      ├── routers/         → API Endpoints                            │
-│      │      ├── admin.py  → Application Registry APIs                │
-│      │      └── tickets.py→ Ticket Lifecycle APIs                    │
+│      │      ├── admin.py    → Application Registry APIs              │
+│      │      ├── tickets.py  → Ticket Lifecycle APIs                  │
+│      │      ├── voice.py    → Voice Layer (REST/WebSocket) APIs      │
+│      │      └── livekit.py  → LiveKit token/status/event APIs        │
 │      │                                                               │
-│      ├── schemas.py       → Request/Response Validation              │
+│      ├── schemas.py / voice_schemas.py → Request/Response Validation │
 │      ├── models.py        → Database ORM Models                      │
 │      └── database.py      → PostgreSQL Connection & Sessions         │
 └──────────────────────────────────────────────────────────────────────┘
                                 │
                                 │ Calls AI Services
                                 ▼
-
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         LAYER 3 — AI ENGINE                          │
-│                        Fully Offline Processing                      │
+│                     Fully Offline / Air-Gapped Processing            │
 │                                                                      │
-│  User Complaint Text                                                 │
+│  User Complaint (text or transcribed voice)                          │
 │          │                                                           │
 │          ▼                                                           │
-│  embedder.py                                                         │
-│  MiniLM-L12-v2 → Converts text into 1024-dimensional vectors         │
+│  services/llm_client.py                                              │
+│  Gemma (via vLLM, OpenAI-compatible API) → Guardrail + Fault/Severity│
+│  (MOCK_LLM=True returns realistic mock output for offline dev)       │
 │          │                                                           │
 │          ▼                                                           │
-│  search.py                                                           │
-│  pgvector + HNSW → Finds similar historical incidents                │
+│  services/embedder.py                                                │
+│  multilingual-e5-base → Converts text into 768-dimensional vectors   │
 │          │                                                           │
 │          ▼                                                           │
-│  classifier.py                                                       │
-│  Qwen 2.5-7B via Ollama → Fault Category & Severity Analysis         │
+│  services/search.py                                                  │
+│  pgvector + HNSW → Finds similar historical incidents & few-shots    │
 │          │                                                           │
 │          ▼                                                           │
-│  dependencies.py                                                     │
+│  services/dependencies.py                                            │
 │  Dependency Graph → Finds affected applications/services             │
+│          │                                                           │
+│  services/pipeline.py → Orchestrates the above, shared by REST       │
+│  and Voice/LiveKit intake paths                                      │
 └──────────────────────────────────────────────────────────────────────┘
                                 │
                                 │ Read / Write
                                 ▼
-
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         LAYER 4 — DATA LAYER                         │
 │                PostgreSQL 16 + pgvector + Docker                     │
@@ -94,58 +99,79 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 │                                                                      │
 │  AI Learning & RAG Memory                                            │
 │  ├── learning_examples                                               │
-│  ├── vector(1024) embeddings                                         │
+│  ├── vector(768) embeddings                                          │
 │  └── HNSW cosine similarity index                                    │
 └──────────────────────────────────────────────────────────────────────┘
                                 │
                                 │ Local Infrastructure
                                 ▼
-
 ┌──────────────────────────────────────────────────────────────────────┐
 │                      LAYER 5 — DEPLOYMENT STACK                      │
-│                    Offline Internal Network                          │
+│                    Offline Internal Network (docker-compose)         │
 │                                                                      │
 │  AI Runtime                                                          │
-│  ├── Ollama Server (Port 11434)                                      │
-│  └── Qwen 2.5-7B Model                                               │
+│  └── vLLM Server → Gemma model (OpenAI-compatible API)               │
+│                                                                      │
+│  Voice Runtime                                                       │
+│  ├── Silero VAD (real-time speech detection)                         │
+│  ├── faster-whisper (STT, CTranslate2, int8/GPU)                     │
+│  └── SAPI5 / Piper (TTS)                                             │
+│                                                                      │
+│  Media Transport                                                     │
+│  └── LiveKit Server (WebRTC, self-hosted, ports 7880/7881/7882)      │
+│                                                                      │
+│  Identity                                                            │
+│  └── Keycloak (SSO, JWT issuance, port 8080)                         │
 │                                                                      │
 │  Containers                                                          │
-│  └── Docker → PostgreSQL + pgvector                                  │
+│  └── Docker Compose → PostgreSQL + pgvector, Keycloak, LiveKit       │
 │                                                                      │
 │  Python Environment                                                  │
 │  └── Wheelhouse → Offline pip package installation                   │
 │                                                                      │
 │  Frontend Build                                                      │
-│  └── Vite dist/ static files                                         │
+│  └── Vite dist/ static files, served by FastAPI when present         │
 └──────────────────────────────────────────────────────────────────────┘
 
 
-                           END-TO-END FLOW
+                           END-TO-END FLOW (TEXT)
 
- User
-  │
-  ▼
- React UI
-  │
-  ▼
- FastAPI API
-  │
-  ▼
- AI Pipeline
-  │
-  ├── Embedding (MiniLM)
-  ├── Similarity Search (pgvector)
-  ├── Classification (Qwen)
-  └── Dependency Analysis
-  │
-  ▼
- PostgreSQL Database
-  │
-  ▼
- Ticket Creation & AI Response
-  │
-  ▼
- Dashboard / Admin Panel
+ User → React UI → FastAPI API → AI Pipeline
+                                    │
+                                    ├── LLM Guardrail (Gemma / vLLM)
+                                    ├── Embedding (e5-base)
+                                    ├── Similarity Search (pgvector)
+                                    ├── Fault/Severity Classification
+                                    └── Dependency Analysis
+                                    │
+                                    ▼
+                            PostgreSQL Database
+                                    │
+                                    ▼
+                     Ticket Creation & AI Response
+                                    │
+                                    ▼
+                        Dashboard / Team Queue / Admin Panel
+
+
+                           END-TO-END FLOW (VOICE)
+
+ Caller ⇄ LiveKit Room (WebRTC) ⇄ livekit_bridge/adapter.py
+                                        │
+                                        ▼
+                            voice/vad.py (Silero VAD)
+                                        │
+                                        ▼
+                          voice/stt.py (faster-whisper)
+                                        │
+                                        ▼
+                     voice/complaint_processor.py → AI Pipeline (as above)
+                                        │
+                                        ▼
+                          voice/tts.py → spoken confirmation
+                                        │
+                                        ▼
+                              Ticket Creation
 ```
 ## Technology Stack
 *   **Backend**: FastAPI (Python 3.11.x)
