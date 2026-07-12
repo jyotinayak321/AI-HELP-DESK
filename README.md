@@ -188,94 +188,122 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 ## Repository Layout
 
 ```text
+## Repository Layout
+
+```text
 backend/
 │
 ├── requirements.txt           # Python dependencies
-├── main.py                    # App entry point & server config
-├── config.py                  # Environment variables (DB connection strings)
+├── main.py                    # App entry point, router mounting, static frontend serving
+├── config.py                  # Environment variables (DB, Keycloak, LiveKit, vLLM, Voice)
 ├── database.py                # SQLModel engine & session management
 ├── models.py                  # SQLModel table schemas
 ├── schemas.py                 # Pydantic validation for API inputs/outputs
 ├── voice_schemas.py           # Pydantic schemas for Voice Layer API
-├── security.py                # JWT token verification via Keycloak SSO
+├── security.py                # JWT verification via Keycloak SSO (JWKS)
 ├── seed_db.py                 # Database seeding with AI vectors
+├── ai_services.py             # AI service bootstrap/wiring helpers
 ├── generate_static_prompts.py # Pre-recorded TTS audio generation (SAPI5)
+├── download_models.py / download_silero.py / download_weights.py
+│                               # Offline model weight fetch scripts (for wheelhouse prep)
 │
-├── local_models/              # Offline Model Weights (Air-gapped)
-│   ├── multilingual-e5-base/  # 768-dim multilingual embedding model
-│   └── whisper-small-ct2/     # faster-whisper STT model (460 MB, int8)
+├── local_models/               # Offline Model Weights (Air-gapped, git-ignored)
 │
-├── voice/                     # 🎤 PHASE 2 - Voice Layer (
+├── voice/                      # 🎤 PHASE 2 — Voice Layer
 │   ├── __init__.py
-│   ├── stt.py                 # Speech-to-Text via faster-whisper
-│   │                          # (CPU, int8 quantized, auto language detect)
-│   ├── tts.py                 # Text-to-Speech via Windows SAPI5 (pyttsx3)
-│   │                          # (Piper VITS implemented but not deployed)
-│   ├── validators.py          # Service number validation
-│   │                          # (NATO phonetic alphabet + Regex ^\d{7}[A-Z]$)
-│   ├── session.py             # Voice session state machine (6 states)
-│   ├── audio.py               # Audio format conversion via ffmpeg
-│   ├── prompts.py             # Pre-recorded static prompt management
-│   └── static_prompts/        # Pre-generated WAV audio files (SAPI5)
-│       ├── greeting.wav
-│       ├── ask_service_number.wav
-│       ├── ask_complaint.wav
-│       ├── confirm_yes_no.wav
-│       ├── retry_service_number.wav
-│       ├── fallback_operator.wav
-│       └── goodbye.wav
+│   ├── vad.py                  # Silero VAD — real-time speech start/end detection
+│   ├── stt.py                  # Speech-to-Text via faster-whisper (auto language detect)
+│   ├── tts.py                  # Text-to-Speech via SAPI5 / Piper
+│   ├── complaint_processor.py  # Shared complaint pipeline for REST + LiveKit voice paths
+│   ├── validators.py           # Service number validation (NATO alphabet + regex)
+│   ├── session.py               # Voice session state machine
+│   ├── audio.py                 # Audio format conversion via ffmpeg
+│   ├── prompts.py               # Pre-recorded static prompt management
+│   └── static_prompts/          # Pre-generated WAV audio files (SAPI5)
 │
-├── services/                  # 🧠 DOMAIN (AI & Business Rules)
+├── livekit_bridge/              # 🎧 PHASE 4 — WebRTC Media Transport
 │   ├── __init__.py
-│   ├── embedder.py            # R-8, R-25 - Multilingual pgvector embeddings
-│   ├── classifier.py          # R-11, R-12 - Fault type & severity (keyword-based)
-│   ├── search.py              # R-9, R-24 - Candidate ranking & Learning Loop
-│   └── dependencies.py        # R-10 - Conditional dependency mapping
+│   ├── adapter.py               # LiveKit ↔ Voice Layer integration boundary
+│   ├── client.py                 # LiveKit Room Service admin API wrapper
+│   ├── connection_manager.py    # Agent room join/leave/reconnect lifecycle
+│   ├── room_manager.py          # Room-to-session registry (transport state only)
+│   └── token_manager.py         # Short-lived JWTs for room participants
 │
-└── routers/                   # ⚙️  DOMAIN (API Endpoints)
+├── services/                    # 🧠 DOMAIN (AI & Business Rules)
+│   ├── __init__.py
+│   ├── embedder.py              # Multilingual pgvector embeddings
+│   ├── classifier.py            # Fault type & severity helpers
+│   ├── llm_client.py            # Phase 3 — Gemma/vLLM guardrail + classification
+│   ├── search.py                # Candidate ranking & Learning Loop
+│   ├── dependencies.py          # Conditional dependency mapping
+│   └── pipeline.py              # Shared AI pipeline orchestrator (REST + Voice)
+│
+└── routers/                     # ⚙️  DOMAIN (API Endpoints)
     ├── __init__.py
-    ├── admin.py               # R-3, R-4 - App Registry CRUD
-    ├── tickets.py             # R-5 to R-21 - Intake & Ticket Lifecycle
-    └── voice.py               # R-30 to R-39 - Voice Layer Endpoints
+    ├── admin.py                 # App Registry CRUD
+    ├── tickets.py                # Intake & Ticket Lifecycle
+    ├── voice.py                  # Voice Layer Endpoints (legacy REST/WebSocket)
+    └── livekit.py                # Phase 4 — LiveKit token/status/event endpoints
 
 frontend/src/
 │
-├── App.jsx                  ← Main router, sabka baap
-├── index.css                ← Global styles
-├── index.html               ← HTML entry point
-├── main.jsx                 ← React app start hota hai yahan se
+├── App.jsx                   ← Main router
+├── auth.config.js             ← react-oidc-context / Keycloak client config
+├── useCurrentUser.js          ← Hook exposing logged-in service_no/role
+├── index.css                  ← Global styles
+├── index.html                 ← HTML entry point
+├── main.jsx                   ← React app bootstrap
 │
-├── api/                     ← Backend se baat karne wale files
-│   ├── axios.js             ← Axios instance (base URL etc)
-│   ├── registry.api.js      ← Applications registry ke API calls
-│   └── tickets.api.js       ← Tickets ke API calls
+├── api/                       ← Backend API clients
+│   ├── axios.js                ← Axios instance (base URL, auth header)
+│   ├── registry.api.js         ← Applications registry API calls
+│   ├── tickets.api.js          ← Tickets API calls
+│   └── voice.api.js            ← Voice session API calls
 │
-├── assets/                  ← Images, icons
-│   ├── hero.png
-│   ├── react.svg
-│   └── vite.svg
+├── assets/                    ← Images, icons
 │
 ├── components/
-│   ├── layout/              ← Page layout
-│   │   ├── Sidebar.jsx      ← Left navigation
-│   │   └── Topbar.jsx       ← Top header
-│   │
-│   └── ui/                  ← Reusable small components
-│       ├── Badge.jsx        ← Status badges (Open, Closed etc)
-│       ├── ErrorMessage.jsx ← Error show karne ke liye
-│       ├── LoadingSpinner.jsx ← Loading animation
-│       └── StatCard.jsx     ← Dashboard cards
+│   ├── layout/                 ← Page layout
+│   │   ├── Sidebar.jsx          ← Left navigation
+│   │   └── Topbar.jsx           ← Top header
+│   ├── voice/                   ← 🎤 Voice intake UI (Phase 2/4)
+│   │   ├── VoiceRecorder.jsx     ← Mic capture (legacy REST path)
+│   │   ├── VoiceSessionPanel.jsx ← Voice session state machine UI
+│   │   ├── TranscriptPanel.jsx   ← STT transcript, confidence, language display
+│   │   └── LiveKitAudioTransport.jsx ← WebRTC audio room connection (Phase 4)
+│   └── ui/                      ← Reusable small components
+│       ├── Badge.jsx             ← Status badges (Open, Closed etc)
+│       ├── ErrorMessage.jsx      ← Error display
+│       ├── LoadingSpinner.jsx    ← Loading animation
+│       └── StatCard.jsx          ← Dashboard cards
+│
+├── hooks/
+│   └── useVadStream.js         ← Client-side VAD/audio streaming hook
 │
 ├── constants/
-│   └── enums.js             ← Fault types, severity, status values
+│   └── enums.js                ← Fault types, severity, status values
 │
-└── pages/                   ← Har page ek alag file
-    ├── ClassifyReview.jsx   ← AI classification review
-    ├── Dashboard.jsx        ← Home dashboard
-    ← Registry.jsx          ← Application registry
-    ├── SubmitComplaint.jsx  ← Complaint form
-    ├── TicketDetail.jsx     ← Single ticket detail
-    └── TicketList.jsx       ← All tickets list
+└── pages/                      ← One page per route
+    ├── LoginPage.jsx             ← Keycloak login screen
+    ├── Dashboard.jsx              ← Home dashboard
+    ├── SubmitComplaint.jsx        ← Complaint form (text + voice)
+    ├── ClassifyReview.jsx         ← AI classification review
+    ├── TicketList.jsx             ← All tickets list
+    ├── TicketDetail.jsx           ← Single ticket detail
+    ├── TeamQueue.jsx               ← Team-lead queue view
+    └── Registry.jsx                ← Application registry
+```
+
+### Root-level files
+| File | Purpose |
+| :--- | :--- |
+| `docker-compose.yml` | Orchestrates PostgreSQL+pgvector, Keycloak, and LiveKit for local/offline deployment |
+| `database/schema.sql` | Canonical SQL schema (source of truth for the tables below) |
+| `keycloak-realm-export.json` | Pre-configured Keycloak realm (clients, roles) imported on container start |
+| `livekit-config.yaml` | Self-hosted LiveKit server configuration |
+| `generate_keycloak_json.py` | Regenerates the Keycloak realm export from environment-specific values |
+| `replace_ips.py` | Utility to rewrite hard-coded host IPs across config files for a new deployment environment |
+
 ```
 ### Database Schema
 
