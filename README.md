@@ -188,9 +188,7 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 ## Repository Layout
 
 ```text
-## Repository Layout
 
-```text
 backend/
 │
 ├── requirements.txt           # Python dependencies
