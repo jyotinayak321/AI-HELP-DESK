@@ -6,8 +6,10 @@ Unlike systems relying on cloud APIs, this application uses **entirely local AI 
 *   **Semantic Matching**: Matches natural language complaints against system descriptions using `pgvector` semantic similarity searches.
 *   **Conditional Dependency Mapping**: Automatically links related systems only when the fault type matches the nature of their dependency (e.g., pulling in authentication systems on login faults).
 *   **Multilingual Processing**: Natively understands code-mixed Hinglish and Hindi text.
+*   **LLM Guardrail & Classification**: A local/air-gapped LLM (via vLLM) validates, corrects, and classifies complaints — with a mock mode for offline development without GPU access.
 *   **Real-time Learning Loop**: Immediately improves prediction accuracy by searching and retrieving corrected complaints historically as few-shot prompts.
-*   **Phased Voice Integration**: Features speech-to-text intake and text-to-speech confirmation capabilities (Phase 2/3).
+*   **Voice Intake Pipeline**: Real-time Voice Activity Detection (Silero VAD) → Speech-to-Text (faster-whisper) → LLM Guardrail → Text-to-Speech confirmation, callable over both a legacy REST/WebSocket path and a WebRTC path (LiveKit).
+*   **SSO Authentication**: Keycloak-issued JWTs protect every API route, with role-based access (operator / team lead) enforced server-side.
 
 ## Architecture
 ```text
