@@ -1,8 +1,7 @@
 # AI Help Desk — Complaint Classification & Logging Application
 ## Project Overview
-The **AI Help Desk** is a secure, intelligent ticketing and triaging system designed for air-gapped enterprise environments. It processes user complaints in **English, Hindi, and Hinglish (code-mixed)** — via text or voice — to automatically identify the responsible applications, expand linked system dependencies, classify the fault category, assign severity levels, and route tickets to the appropriate teams.
-Unlike systems relying on cloud APIs, this application uses **entirely local / self-hosted AI models and infrastructure**: embeddings, LLM classification, speech-to-text, voice activity detection, text-to-speech, WebRTC media transport, and SSO authentication all run inside the air-gapped network. It features a human-in-the-loop validation console and a **retrieval-based learning loop** that allows the system to learn from operator corrections in real time without weight retraining.
-
+The **AI Help Desk** is a secure, intelligent ticketing and triaging system designed for air-gapped enterprise environments. It processes user complaints in **English, Hindi, and Hinglish (code-mixed)** to automatically identify the responsible applications, expand linked system dependencies, classify the fault category, assign severity levels, and route tickets to the appropriate teams. 
+Unlike systems relying on cloud APIs, this application uses **entirely local AI models** for embeddings, classification, speech-to-text, and text-to-speech. It features a human-in-the-loop validation console and a **retrieval-based learning loop** that allows the system to learn from operator corrections in real time without weight retraining.
 ### Key Capabilities
 *   **Semantic Matching**: Matches natural language complaints against system descriptions using `pgvector` semantic similarity searches.
 *   **Conditional Dependency Mapping**: Automatically links related systems only when the fault type matches the nature of their dependency (e.g., pulling in authentication systems on login faults).
@@ -176,23 +175,20 @@ Unlike systems relying on cloud APIs, this application uses **entirely local / s
                                         ▼
                               Ticket Creation
 ```
-
 ## Technology Stack
-*   **Backend**: FastAPI (Python 3.11.x), Uvicorn
-*   **Frontend**: React (Vite, Node.js 20.x LTS), `react-oidc-context` for Keycloak login
-*   **Database**: PostgreSQL 16.x + `pgvector` extension (Docker: `pgvector/pgvector:pg16`)
-*   **Identity / SSO**: Keycloak 24.x (JWT issuance, JWKS verification in `security.py`)
-*   **Embedding Model**: `intfloat/multilingual-e5-base` (Local Sentence-Transformers, 768-dim vectors)
-*   **Classification / Guardrail Model**: Gemma (`google/gemma-4-31B-it`) served locally via **vLLM** through an OpenAI-compatible API — replaces the earlier keyword-based classifier; a `MOCK_LLM` flag returns realistic mock output for offline development without a GPU server
-*   **VAD**: `silero-vad` (real-time speech activity detection, streaming, CPU/CUDA)
-*   **STT Model**: `faster-whisper` (CTranslate2 local wrapper, medium model, int8/GPU)
-*   **TTS**: Windows SAPI5 (`pyttsx3`) with Piper (VITS) as an alternate backend
-*   **Voice Media Transport**: LiveKit (self-hosted WebRTC media router) alongside a legacy WebSocket/REST audio path, selectable via `LIVEKIT_ENABLED`
-*   **Orchestration**: Docker Compose (PostgreSQL, Keycloak, LiveKit)
+*   **Backend**: FastAPI (Python 3.11.x)
+*   **Frontend**: React (Vite, Node.js 20.x LTS)
+*   **Database**: PostgreSQL 16.x + `pgvector` v0.7.x extension
+*   **Embedding Model**: `intfloat/multilingual-e5-large` (Local Sentence-Transformers)
+*   **Inference Model**: `Qwen/Qwen2.5-7B-Instruct-GGUF` (Local via Ollama/llama.cpp)
+*   **STT Model**: `Systran/faster-whisper-medium` (CTranslate2 Local Wrapper)
+*   **TTS Model**: `MyShell-AI/MeloTTS-English-Hindi` (Local Inference)
 
+  
 ## Repository Layout
 
 ```text
+
 backend/
 │
 ├── requirements.txt           # Python dependencies
@@ -306,6 +302,7 @@ frontend/src/
 | `generate_keycloak_json.py` | Regenerates the Keycloak realm export from environment-specific values |
 | `replace_ips.py` | Utility to rewrite hard-coded host IPs across config files for a new deployment environment |
 
+```
 ### Database Schema
 
 #### 1. Applications
@@ -344,7 +341,7 @@ Stores common issues and symptoms associated with applications.
 | `embedding`      | VECTOR(768) |
 ```
 **Purpose**: Used for automatic application identification from user complaints.
-
+```
 #### 4. Application Dependencies
 Defines relationships between applications.
 ```
@@ -354,8 +351,8 @@ Defines relationships between applications.
 | `source_app_id`    | FK           |
 | `dependent_app_id` | FK           |
 | `dependency_nature`| VARCHAR(20)  |
-```
-**Example**: Email Service → Authentication Service
+
+**Example**: Email Service → Authentication Service  
 **Purpose**: Helps identify root causes when multiple applications are affected.
 
 #### 5. Complaint Intake
@@ -390,7 +387,7 @@ Main ticket tracking table.
 | `complainant_rank`       | VARCHAR(50)      |
 | `complainant_unit`       | VARCHAR(100)     |
 ```
-**Status Examples**: Open, Assigned, In Progress, Resolved, Closed
+**Status Examples**: Open, Assigned, In Progress, Resolved, Closed  
 **Severity Examples**: Low, Medium, High, Critical
 
 #### 7. Ticket Related Applications
@@ -432,25 +429,3 @@ Stores AI learning data.
 ```
 **Purpose**: Used to improve application prediction accuracy.
 
-## Local Development Setup
-
-1. **Database, Keycloak & LiveKit** — start the local stack:
-   ```bash
-   docker compose up -d
-   ```
-2. **Backend**:
-   ```bash
-   cd backend
-   pip install -r requirements.txt
-   # copy/adjust a .env from config.py defaults (DATABASE_URL, KEYCLOAK_URL, VLLM_API_URL, etc.)
-   python seed_db.py       # seed applications + vector embeddings
-   python main.py          # or: uvicorn main:app --reload --port 8001
-   ```
-   Set `AUTH_ENABLED=False` and `MOCK_LLM=True` in `.env` to run fully offline without Keycloak or a vLLM server (both default to sensible dev values in `config.py`).
-3. **Frontend**:
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-4. API docs are available at `http://localhost:8001/docs` once the backend is running.
