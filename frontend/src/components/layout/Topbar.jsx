@@ -8,11 +8,12 @@ const pageTitles = {
   '/tickets':   'Tickets',
   '/registry':  'App Registry',
   '/classify':  'Classify Review',
+  '/queue':     'Team Queue',
 };
 
 export default function Topbar() {
   const { pathname } = useLocation();
-  const { user } = useCurrentUser();
+  const { serviceNo, role } = useCurrentUser();
   const { theme, toggleTheme } = useTheme();
 
   const title = pageTitles[pathname] ||
@@ -83,7 +84,7 @@ export default function Topbar() {
             boxShadow: '0 0 5px var(--success)',
             flexShrink: 0,
           }} />
-          {user?.service_no || 'Operator'}
+          {serviceNo || 'Operator'}{role ? ` · ${role}` : ''}
         </div>
       </div>
     </header>

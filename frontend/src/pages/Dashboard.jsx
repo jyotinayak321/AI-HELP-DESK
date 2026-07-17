@@ -8,6 +8,7 @@ import LoadingSpinner from '../components/ui/LoadingSpinner';
 import ErrorMessage from '../components/ui/ErrorMessage';
 import { STATUS_COLOR, SEVERITY_COLOR } from '../constants/enums';
 import { useCurrentUser } from '../useCurrentUser';
+import { detectOutages } from '../utils/detectOutages';
 import TicketStatusPieChart from '../components/charts/TicketStatusPieChart';
 import SeverityBarChart from '../components/charts/SeverityBarChart';
 import AppComplaintsBarChart from '../components/charts/AppComplaintsBarChart';
@@ -30,23 +31,6 @@ function ChartCard({ title, delay, children }) {
   );
 }
 
-function detectOutages(tickets) {
-  const appCount = {};
-  const ONE_HOUR = 60 * 60 * 1000;
-  const now = Date.now();
-  tickets.forEach(t => {
-    if (t.status === 'open') {
-      const age = now - new Date(t.created_at).getTime();
-      if (age <= ONE_HOUR) {
-        const appName = t.primary_application_name || 'Unknown';
-        appCount[appName] = (appCount[appName] || 0) + 1;
-      }
-    }
-  });
-  return Object.entries(appCount)
-    .filter(([, count]) => count >= 3)
-    .map(([app, count]) => ({ app, count }));
-}
 
 function Dashboard() {
   const navigate = useNavigate();

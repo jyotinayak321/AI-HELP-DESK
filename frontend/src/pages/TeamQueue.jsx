@@ -6,6 +6,7 @@ import Badge from '../components/ui/Badge';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import ErrorMessage from '../components/ui/ErrorMessage';
 import { useCurrentUser } from '../useCurrentUser';
+import { detectOutages } from '../utils/detectOutages';
 
 function TeamQueue() {
   const navigate   = useNavigate();
@@ -36,6 +37,7 @@ function TeamQueue() {
 
   const criticalCount = tickets.filter(t => t.severity === 'critical').length;
   const highCount     = tickets.filter(t => t.severity === 'high').length;
+  const outages       = detectOutages(tickets);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -52,6 +54,17 @@ function TeamQueue() {
           Showing active tickets (open and in progress) assigned to your department's applications.
         </div>
       </div>
+
+      {outages.length > 0 && (
+        <div className="alert alert-error">
+          <span>🔴</span>
+          <div>
+            <strong>Possible Outage Detected:</strong>{' '}
+            {outages.map(o => `${o.app} (${o.count} tickets)`).join(', ')}
+            {' '}— multiple operators are reporting the same application within the last hour.
+          </div>
+        </div>
+      )}
 
       {!loading && !error && (
         <div style={{ display: 'flex', gap: '12px' }}>
