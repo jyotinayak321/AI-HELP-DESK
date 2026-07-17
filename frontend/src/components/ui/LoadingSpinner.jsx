@@ -1,30 +1,23 @@
 /**
- * Badge.jsx
- * Small colored pill used for Fault Type, Severity, and Status columns.
- * Accepts explicit label/color/bg props (matches how it's called across the app).
- * Falls back to CSS variables if color/bg aren't provided, so it never
- * becomes invisible against the dark theme.
+ * LoadingSpinner.jsx
+ * Skeleton-shimmer placeholder shown while a page's data is loading.
+ * Keeps the same {text} prop call sites already use across the app
+ * (Dashboard, TicketList, etc.) but renders shimmering bars instead of
+ * a spinner — reads as a real product loading state, not a spinner delay.
  */
-export default function Badge({ label, color, bg }) {
+export default function LoadingSpinner({ text, rows = 3 }) {
   return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '3px 10px',
-        borderRadius: '20px',
-        fontSize: '11px',
-        fontWeight: 600,
-        textTransform: 'capitalize',
-        letterSpacing: '0.02em',
-        color: color || 'var(--text-primary)',
-        background: bg || 'var(--surface-2)',
-        border: `1px solid ${color ? color + '33' : 'var(--border)'}`,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {label}
-    </span>
+    <div className="animate-in" style={{ padding: '4px 0' }}>
+      {text && (
+        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 14 }}>
+          {text}
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {Array.from({ length: rows }).map((_, i) => (
+          <div key={i} className="skeleton-bar" style={{ width: i === rows - 1 ? '60%' : '100%' }} />
+        ))}
+      </div>
+    </div>
   );
 }

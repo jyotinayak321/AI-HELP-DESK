@@ -25,16 +25,16 @@ function App() {
         <div style={{
           display: 'flex', height: '100vh',
           alignItems: 'center', justifyContent: 'center',
-          background: '#060d1a', flexDirection: 'column', gap: 16,
+          background: 'var(--navy-950)', flexDirection: 'column', gap: 16,
         }}>
           <div style={{
             width: 36, height: 36,
-            border: '3px solid rgba(30,144,255,0.15)',
-            borderTop: '3px solid #1E90FF',
+            border: '3px solid var(--border)',
+            borderTop: '3px solid var(--accent)',
             borderRadius: '50%',
             animation: 'spin 0.8s linear infinite',
           }} />
-          <div style={{ color: '#4d6480', fontSize: '0.875rem' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
             Connecting to authentication server...
           </div>
           <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -63,7 +63,7 @@ function App() {
       />
 
       {/* Outer wrapper */}
-      <div style={{ display: 'flex', minHeight: '100vh', background: '#060d1a' }}>
+      <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--navy-950)' }}>
 
         {/* Fixed Sidebar — 220px wide */}
         <Sidebar />
