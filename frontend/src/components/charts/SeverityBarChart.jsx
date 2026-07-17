@@ -1,8 +1,11 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { SEVERITY_LEVELS, SEVERITY_COLOR } from '../../constants/enums';
-import { CHART_COLORS, tooltipStyle } from './chartTheme';
+import { getTooltipStyle, getChartColors } from './chartTheme';
+import { useTheme } from '../../ThemeContext';
 
 export default function SeverityBarChart({ tickets }) {
+  const { theme } = useTheme();
+  const colors = getChartColors(theme);
   const counts = {};
   tickets.forEach(t => {
     const sev = t.severity || 'normal';
@@ -21,10 +24,10 @@ export default function SeverityBarChart({ tickets }) {
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={data} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
-        <CartesianGrid stroke={CHART_COLORS.grid} vertical={false} />
-        <XAxis dataKey="name" tick={{ fill: CHART_COLORS.axis, fontSize: 11 }} axisLine={{ stroke: CHART_COLORS.grid }} tickLine={false} />
-        <YAxis allowDecimals={false} tick={{ fill: CHART_COLORS.axis, fontSize: 11 }} axisLine={false} tickLine={false} />
-        <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+        <CartesianGrid stroke={colors.grid} vertical={false} />
+        <XAxis dataKey="name" tick={{ fill: colors.axis, fontSize: 11 }} axisLine={{ stroke: colors.grid }} tickLine={false} />
+        <YAxis allowDecimals={false} tick={{ fill: colors.axis, fontSize: 11 }} axisLine={false} tickLine={false} />
+        <Tooltip contentStyle={getTooltipStyle(theme)} cursor={{ fill: colors.grid }} />
         <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={48}>
           {data.map(entry => <Cell key={entry.name} fill={entry.color} />)}
         </Bar>

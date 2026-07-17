@@ -53,9 +53,9 @@ function App() {
         position="top-right"
         toastOptions={{
           style: {
-            background: '#111f35',
-            color: '#e8edf5',
-            border: '1px solid rgba(30,144,255,0.15)',
+            background: 'var(--surface-2)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border)',
             fontSize: '13px',
             borderRadius: '10px',
           },
@@ -72,7 +72,7 @@ function App() {
         <div style={{
           marginLeft: '220px',
           flex: 1,
-          borderLeft: '1px solid rgba(30,144,255,0.15)',
+          borderLeft: '1px solid var(--border)',
           display: 'flex',
           flexDirection: 'column',
           minHeight: '100vh',
@@ -87,7 +87,7 @@ function App() {
             flex: 1,
             overflowY: 'auto',
             overflowX: 'hidden',
-            background: '#060d1a',
+            background: 'var(--navy-950)',
             padding: '24px',
           }}>
             {/* Centered content — max 1100px */}

@@ -1,7 +1,10 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { CHART_COLORS, tooltipStyle } from './chartTheme';
+import { getTooltipStyle, getChartColors } from './chartTheme';
+import { useTheme } from '../../ThemeContext';
 
 export default function AppComplaintsBarChart({ tickets }) {
+  const { theme } = useTheme();
+  const colors = getChartColors(theme);
   const counts = {};
   tickets.forEach(t => {
     const app = t.primary_application_name || 'Unknown';
@@ -19,19 +22,19 @@ export default function AppComplaintsBarChart({ tickets }) {
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={data} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-        <CartesianGrid stroke={CHART_COLORS.grid} horizontal={false} />
-        <XAxis type="number" allowDecimals={false} tick={{ fill: CHART_COLORS.axis, fontSize: 11 }} axisLine={false} tickLine={false} />
+        <CartesianGrid stroke={colors.grid} horizontal={false} />
+        <XAxis type="number" allowDecimals={false} tick={{ fill: colors.axis, fontSize: 11 }} axisLine={false} tickLine={false} />
         <YAxis
           type="category"
           dataKey="name"
           width={110}
-          tick={{ fill: CHART_COLORS.text, fontSize: 11 }}
+          tick={{ fill: colors.text, fontSize: 11 }}
           axisLine={false}
           tickLine={false}
           tickFormatter={(v) => (v.length > 16 ? `${v.slice(0, 15)}…` : v)}
         />
-        <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-        <Bar dataKey="value" fill={CHART_COLORS.accent} radius={[0, 6, 6, 0]} maxBarSize={18} />
+        <Tooltip contentStyle={getTooltipStyle(theme)} cursor={{ fill: colors.grid }} />
+        <Bar dataKey="value" fill={colors.accent} radius={[0, 6, 6, 0]} maxBarSize={18} />
       </BarChart>
     </ResponsiveContainer>
   );

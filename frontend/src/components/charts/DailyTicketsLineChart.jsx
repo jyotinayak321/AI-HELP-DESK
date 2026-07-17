@@ -1,10 +1,13 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { CHART_COLORS, tooltipStyle } from './chartTheme';
+import { getTooltipStyle, getChartColors } from './chartTheme';
+import { useTheme } from '../../ThemeContext';
 
 const DAYS = 14;
 const ONE_DAY = 24 * 60 * 60 * 1000;
 
 export default function DailyTicketsLineChart({ tickets }) {
+  const { theme } = useTheme();
+  const colors = getChartColors(theme);
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -26,11 +29,11 @@ export default function DailyTicketsLineChart({ tickets }) {
   return (
     <ResponsiveContainer width="100%" height={220}>
       <LineChart data={data} margin={{ top: 8, right: 16, left: -20, bottom: 0 }}>
-        <CartesianGrid stroke={CHART_COLORS.grid} vertical={false} />
-        <XAxis dataKey="name" tick={{ fill: CHART_COLORS.axis, fontSize: 10 }} axisLine={{ stroke: CHART_COLORS.grid }} tickLine={false} interval={2} />
-        <YAxis allowDecimals={false} tick={{ fill: CHART_COLORS.axis, fontSize: 11 }} axisLine={false} tickLine={false} />
-        <Tooltip contentStyle={tooltipStyle} />
-        <Line type="monotone" dataKey="value" stroke={CHART_COLORS.accent} strokeWidth={2.5} dot={{ r: 3, fill: CHART_COLORS.accent, strokeWidth: 0 }} activeDot={{ r: 5 }} />
+        <CartesianGrid stroke={colors.grid} vertical={false} />
+        <XAxis dataKey="name" tick={{ fill: colors.axis, fontSize: 10 }} axisLine={{ stroke: colors.grid }} tickLine={false} interval={2} />
+        <YAxis allowDecimals={false} tick={{ fill: colors.axis, fontSize: 11 }} axisLine={false} tickLine={false} />
+        <Tooltip contentStyle={getTooltipStyle(theme)} />
+        <Line type="monotone" dataKey="value" stroke={colors.accent} strokeWidth={2.5} dot={{ r: 3, fill: colors.accent, strokeWidth: 0 }} activeDot={{ r: 5 }} />
       </LineChart>
     </ResponsiveContainer>
   );

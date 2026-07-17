@@ -1,8 +1,11 @@
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { STATUS_COLOR } from '../../constants/enums';
-import { tooltipStyle, legendStyle } from './chartTheme';
+import { getTooltipStyle, getLegendStyle, getChartColors } from './chartTheme';
+import { useTheme } from '../../ThemeContext';
 
 export default function TicketStatusPieChart({ tickets }) {
+  const { theme } = useTheme();
+  const colors = getChartColors(theme);
   const counts = {};
   tickets.forEach(t => {
     const status = t.status || 'open';
@@ -22,8 +25,8 @@ export default function TicketStatusPieChart({ tickets }) {
             <Cell key={entry.name} fill={STATUS_COLOR[entry.name] || '#64748B'} stroke="none" />
           ))}
         </Pie>
-        <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: '#F8FAFC', textTransform: 'capitalize' }} />
-        <Legend wrapperStyle={legendStyle} formatter={(value) => <span style={{ textTransform: 'capitalize' }}>{value}</span>} />
+        <Tooltip contentStyle={getTooltipStyle(theme)} labelStyle={{ color: colors.tooltip.color, textTransform: 'capitalize' }} />
+        <Legend wrapperStyle={getLegendStyle(theme)} formatter={(value) => <span style={{ textTransform: 'capitalize' }}>{value}</span>} />
       </PieChart>
     </ResponsiveContainer>
   );

@@ -1,5 +1,6 @@
 import { useLocation } from 'react-router-dom';
 import { useCurrentUser } from '../../useCurrentUser';
+import { useTheme } from '../../ThemeContext';
 
 const pageTitles = {
   '/dashboard': 'Dashboard',
@@ -12,6 +13,7 @@ const pageTitles = {
 export default function Topbar() {
   const { pathname } = useLocation();
   const { user } = useCurrentUser();
+  const { theme, toggleTheme } = useTheme();
 
   const title = pageTitles[pathname] ||
     (pathname.startsWith('/tickets/') ? 'Ticket Detail' : 'AI Help Desk');
@@ -48,8 +50,17 @@ export default function Topbar() {
         </span>
       </div>
 
-      {/* Right — Date + User */}
+      {/* Right — Theme toggle + Date + User */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+        <button
+          onClick={toggleTheme}
+          className="btn btn-ghost btn-sm"
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          style={{ padding: '5px 9px', fontSize: '0.85rem' }}
+        >
+          {theme === 'dark' ? '🌙' : '☀️'}
+        </button>
+
         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
           {now}
         </span>
