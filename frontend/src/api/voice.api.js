@@ -55,6 +55,15 @@ export const submitFallback = async (sessionId, fallbackData) => {
   });
 };
 
+// Phase 4: re-issue a LiveKit token for an existing session (e.g. when
+// resuming into ASK_ANOTHER_COMPLAINT after a ticket is confirmed, or
+// after a browser refresh). 404s if the session never had a LiveKit
+// room (LIVEKIT_ENABLED=false) — callers should treat that as "not
+// available" and fall back to the legacy record/upload flow.
+export const getLiveKitToken = async (sessionId) => {
+  return api.get('/api/livekit/token', { params: { session_id: sessionId } });
+};
+
 // FIX: Sirf ek fetchAudioBlob — JWT token ke saath
 export const fetchAudioBlob = async (url) => {
   const oidcKey = Object.keys(sessionStorage).find(k => k.startsWith('oidc.user:'));

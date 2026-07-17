@@ -29,6 +29,14 @@ class VoiceStartResponse(BaseModel):
         description="Whether a pre-recorded audio file is available for this prompt.",
     )
 
+    # Phase 4: LiveKit real-time transport (runtime flag, not build-time).
+    # Populated only when LIVEKIT_ENABLED=true and room setup succeeds;
+    # otherwise the frontend falls back to the legacy record/upload flow.
+    livekit_enabled: bool = False
+    livekit_token: Optional[str] = None
+    livekit_url: Optional[str] = None
+    room_name: Optional[str] = None
+
 
 class VoiceServiceNumberResponse(BaseModel):
     """Response from POST /api/voice/service-number."""

@@ -1,12 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { startVoiceSession, submitServiceNumberAudio, submitComplaintAudio, confirmServiceNumber, submitConfirmAudio, submitAnotherComplaintAudio, submitFallback, fetchAudioBlob } from '../../api/voice.api';
+import toast from 'react-hot-toast';
+import { startVoiceSession, submitServiceNumberAudio, submitComplaintAudio, confirmServiceNumber, submitConfirmAudio, submitAnotherComplaintAudio, submitFallback, fetchAudioBlob, getLiveKitToken } from '../../api/voice.api';
 import VoiceRecorder from './VoiceRecorder';
 import TranscriptPanel from './TranscriptPanel';
+import LiveKitAudioTransport from './LiveKitAudioTransport';
 
 const VOICE_API_BASE = 'http://127.0.0.1:8001/api/voice';
 
 function VoiceSessionPanel({ onClassificationComplete, onCancel, onCallEnded, resumeSessionId, resumeState, resumePromptText, lastTicketNumber }) {
-  const [session, setSession] = useState({ id: null, state: 'INIT', promptText: 'Starting voice session...', transcript: '', serviceNumber: '', confidence: 0, language: '', latency: 0 });
+  const [session, setSession] = useState({
+    id: null, state: 'INIT', promptText: 'Starting voice session...', transcript: '', serviceNumber: '', confidence: 0, language: '', latency: 0,
+    livekitEnabled: false, livekitToken: null, livekitUrl: null,
+  });
   const [isProcessing, setIsProcessing] = useState(false);
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [fallbackData, setFallbackData] = useState({ service_no: '' });
@@ -34,6 +39,25 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel, onCallEnded, re
       // instead of starting a brand-new voice session.
       if (resumeSessionId) {
         setSession(prev => ({ ...prev, id: resumeSessionId, state: resumeState, promptText: resumePromptText }));
+
+        // Phase 4: the room (if any) is still alive server-side — re-issue
+        // a caller token for it. 404s if this session never had a LiveKit
+        // room (LIVEKIT_ENABLED=false), in which case we just continue on
+        // the legacy record/upload flow below.
+        try {
+          const lkRes = await getLiveKitToken(resumeSessionId);
+          if (isMounted.current) {
+            setSession(prev => ({
+              ...prev,
+              livekitEnabled: true,
+              livekitToken: lkRes.data.livekit_token,
+              livekitUrl: lkRes.data.livekit_url,
+            }));
+          }
+        } catch (_) {
+          // No active LiveKit room for this session — legacy path, ignore.
+        }
+
         greetingDoneRef.current = true;
         if (isMounted.current) setIsProcessing(false);
         await playAudio(`${VOICE_API_BASE}/prompt/ask_another_complaint`);
@@ -42,7 +66,15 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel, onCallEnded, re
 
       const res = await startVoiceSession();
       if (!isMounted.current) return;
-      setSession(prev => ({ ...prev, id: res.data.session_id, state: res.data.state, promptText: res.data.prompt_text }));
+      setSession(prev => ({
+        ...prev,
+        id: res.data.session_id,
+        state: res.data.state,
+        promptText: res.data.prompt_text,
+        livekitEnabled: res.data.livekit_enabled || false,
+        livekitToken: res.data.livekit_token || null,
+        livekitUrl: res.data.livekit_url || null,
+      }));
       // REQUIREMENT 1 & 2: Play greeting FULLY — mic tab tak OFF
       await playAudio(`http://127.0.0.1:8001/api/voice/prompt/greeting`);
       // REQUIREMENT 3: Greeting khatam — ab mic on hoga
@@ -198,7 +230,7 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel, onCallEnded, re
 
   const handleFallbackSubmit = async () => {
     if (!fallbackData.service_no.trim()) return;
-    if (!/^\d{5}$/.test(fallbackData.service_no.trim())) { alert('Service number must be 5 digits.'); return; }
+    if (!/^\d{5}$/.test(fallbackData.service_no.trim())) { toast.error('Service number must be 5 digits.'); return; }
     setIsProcessing(true);
     try {
       const res = await submitFallback(session.id, fallbackData);
@@ -208,7 +240,55 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel, onCallEnded, re
     finally { setIsProcessing(false); }
   };
 
-  const showRecorder = greetingDoneRef.current && ['CAPTURING_SERVICE_NUMBER', 'CAPTURING_COMPLAINT', 'CONFIRMING_SERVICE_NUMBER', 'OPERATOR_REVIEW', 'ASK_ANOTHER_COMPLAINT'].includes(session.state);
+  const audioActiveStates = ['CAPTURING_SERVICE_NUMBER', 'CAPTURING_COMPLAINT', 'CONFIRMING_SERVICE_NUMBER', 'OPERATOR_REVIEW', 'ASK_ANOTHER_COMPLAINT'];
+  const showRecorder = greetingDoneRef.current && !session.livekitEnabled && audioActiveStates.includes(session.state);
+  const showLiveKit  = greetingDoneRef.current && session.livekitEnabled && audioActiveStates.includes(session.state);
+
+  const handleLiveKitStateChange = useCallback((data) => {
+    setIsProcessing(false);
+    setSession(prev => ({
+      ...prev,
+      state: data.state || prev.state,
+      transcript: data.transcript || prev.transcript,
+      promptText: data.prompt_text || prev.promptText,
+      serviceNumber: data.service_no || prev.serviceNumber,
+      confidence: data.stt_confidence ?? data.confidence ?? prev.confidence,
+      language: data.stt_language || prev.language,
+      latency: data.stt_processing_time_ms ?? prev.latency,
+    }));
+
+    if (data.state === 'OPERATOR_REVIEW') {
+      onClassificationComplete(
+        {
+          intake_id: data.intake_id,
+          is_repeat_caller: false,
+          potential_duplicates: [],
+          fault_type_proposal: data.fault_type_proposal,
+          severity_proposal: data.severity_proposal,
+          candidates: data.candidates || [],
+        },
+        {
+          raw_text: data.transcript,
+          complainant_service_no: session.serviceNumber,
+          complainant_name: '',
+          complainant_unit: '',
+          complainant_rank: '',
+          voice_session_id: session.id,
+        }
+      );
+    } else if (data.state === 'COMPLETED') {
+      if (onCallEnded) onCallEnded();
+    }
+  }, [onClassificationComplete, onCallEnded, session.serviceNumber, session.id]);
+
+  const handleLiveKitTranscribed = useCallback((data) => {
+    setSession(prev => ({ ...prev, transcript: data.text, confidence: data.confidence, language: data.language }));
+  }, []);
+
+  const handleLiveKitError = useCallback((data) => {
+    setIsProcessing(false);
+    setSession(prev => ({ ...prev, state: 'ERROR', promptText: data.detail || 'An error occurred' }));
+  }, []);
 
   return (
     <div style={{ background: '#0d1b2e', border: '1px solid rgba(30,144,255,0.3)', borderRadius: 14, padding: 20, marginBottom: 24, boxShadow: '0 0 20px rgba(30,144,255,0.1)' }}>
@@ -263,13 +343,25 @@ function VoiceSessionPanel({ onClassificationComplete, onCancel, onCallEnded, re
         </div>
       )}
 
-      {/* Recorder */}
+      {/* Recorder (legacy record/upload) or LiveKit real-time transport */}
       {showRecorder && (
         <VoiceRecorder
           onRecordingComplete={handleRecordingComplete}
           onRecordingStart={handleRecordingStart}
           isProcessing={isProcessing}
           audioPlaying={audioPlaying}
+        />
+      )}
+
+      {showLiveKit && (
+        <LiveKitAudioTransport
+          session_id={session.id}
+          livekit_token={session.livekitToken}
+          livekit_url={session.livekitUrl}
+          onStateChange={handleLiveKitStateChange}
+          onTranscribed={handleLiveKitTranscribed}
+          onProcessing={() => setIsProcessing(true)}
+          onError={handleLiveKitError}
         />
       )}
 

@@ -60,6 +60,14 @@ openai==2.44.0
 sounddevice==0.5.5
 
 # ==========================================
+# Phase 4: LiveKit Media Transport
+# ==========================================
+# Python agent SDK — joins rooms, subscribes/publishes audio tracks
+livekit==0.17.5
+# REST API + JWT token generation for rooms
+livekit-api==1.0.5
+
+# ==========================================
 # Utilities / Supporting Libraries
 # ==========================================
 annotated-doc==0.0.4

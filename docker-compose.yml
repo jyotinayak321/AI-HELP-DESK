@@ -25,5 +25,24 @@ services:
     volumes:
       - ./keycloak-realm-export.json:/opt/keycloak/data/import/realm.json
 
+  # ──────────────────────────────────────────────────────────────────────
+  # LiveKit Server — Self-hosted WebRTC media router (air-gapped)
+  # Ports:
+  #   7880 — HTTP / WebSocket (Python SDK + browser livekit-client connect here)
+  #   7881 — TCP fallback for WebRTC (when UDP is blocked)
+  #   7882 — UDP (WebRTC media traffic — primary path)
+  # ──────────────────────────────────────────────────────────────────────
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: helpdesk-livekit
+    command: --config /etc/livekit/config.yaml
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    volumes:
+      - ./livekit-config.yaml:/etc/livekit/config.yaml
+    restart: unless-stopped
+
 volumes:
   postgres_data:

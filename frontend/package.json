@@ -10,14 +10,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@livekit/components-core": "^0.12.14",
+    "@livekit/components-react": "^2.9.23",
     "axios": "^1.18.0",
+    "livekit-client": "^2.20.1",
     "lucide-react": "^1.21.0",
     "oidc-client-ts": "^3.5.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-hot-toast": "^2.6.0",
     "react-oidc-context": "^3.3.1",
-    "react-router-dom": "^7.18.0"
+    "react-router-dom": "^7.18.0",
+    "recharts": "^3.9.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers.admin import router as admin_router
 from routers.tickets import router as tickets_router
 from routers.voice import router as voice_router
+from routers.livekit import router as livekit_router
 from security import get_current_user, CurrentUser, require_operator
 from config import settings
 import uvicorn
@@ -32,6 +33,7 @@ app.add_middleware(
 app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
 app.include_router(tickets_router, prefix="/api", tags=["Tickets"])
 app.include_router(voice_router, prefix="/api/voice", tags=["Voice"])
+app.include_router(livekit_router, prefix="/api/livekit", tags=["LiveKit"])
 
 @app.get("/", tags=["Health"])
 def health_check():

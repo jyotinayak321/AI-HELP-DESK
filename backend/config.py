@@ -51,6 +51,22 @@ class Settings(BaseSettings):
     VOICE_SESSION_TTL: int = 1800      # seconds (30 min default)
     VOICE_MAX_SVC_RETRIES: int = 3
 
+    # -- Phase 4: LiveKit Media Transport (runtime backend flag) -----
+    # Set LIVEKIT_ENABLED=true to activate real-time WebRTC media transport.
+    # When false (default), the existing record/upload REST audio path
+    # remains the only path. The frontend reads this flag from the
+    # /voice/start response (no build-time env var) and decides whether
+    # to join a LiveKit room or use the legacy path.
+    LIVEKIT_ENABLED: bool = False
+    LIVEKIT_URL: str = "ws://localhost:7880"
+    LIVEKIT_API_KEY: str = "helpdesk_key"
+    LIVEKIT_API_SECRET: str = "helpdesk_secret_change_in_production"
+    # Identity used by the AI agent when joining a room as a participant.
+    LIVEKIT_AGENT_IDENTITY: str = "ai-helpdesk-agent"
+    # STT concurrency: single lock protects the shared SpeechToTextEngine.
+    # Future: increase to allow a pool when concurrency becomes a bottleneck.
+    LIVEKIT_STT_POOL_SIZE: int = 1
+
     # -- Phase 3: LLM Guardrail & Classification ----
     # The vLLM server URL exposed by the air-gapped environment.
     # Example: "http://10.0.0.5:8001/v1"
