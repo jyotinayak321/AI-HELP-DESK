@@ -25,16 +25,16 @@ function App() {
         <div style={{
           display: 'flex', height: '100vh',
           alignItems: 'center', justifyContent: 'center',
-          background: '#060d1a', flexDirection: 'column', gap: 16,
+          background: 'var(--navy-950)', flexDirection: 'column', gap: 16,
         }}>
           <div style={{
             width: 36, height: 36,
-            border: '3px solid rgba(30,144,255,0.15)',
-            borderTop: '3px solid #1E90FF',
+            border: '3px solid var(--border)',
+            borderTop: '3px solid var(--accent)',
             borderRadius: '50%',
             animation: 'spin 0.8s linear infinite',
           }} />
-          <div style={{ color: '#4d6480', fontSize: '0.875rem' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
             Connecting to authentication server...
           </div>
           <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -53,9 +53,9 @@ function App() {
         position="top-right"
         toastOptions={{
           style: {
-            background: '#111f35',
-            color: '#e8edf5',
-            border: '1px solid rgba(30,144,255,0.15)',
+            background: 'var(--surface-2)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border)',
             fontSize: '13px',
             borderRadius: '10px',
           },
@@ -63,7 +63,7 @@ function App() {
       />
 
       {/* Outer wrapper */}
-      <div style={{ display: 'flex', minHeight: '100vh', background: '#060d1a' }}>
+      <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--navy-950)' }}>
 
         {/* Fixed Sidebar — 220px wide */}
         <Sidebar />
@@ -72,7 +72,7 @@ function App() {
         <div style={{
           marginLeft: '220px',
           flex: 1,
-          borderLeft: '1px solid rgba(30,144,255,0.15)',
+          borderLeft: '1px solid var(--border)',
           display: 'flex',
           flexDirection: 'column',
           minHeight: '100vh',
@@ -87,7 +87,7 @@ function App() {
             flex: 1,
             overflowY: 'auto',
             overflowX: 'hidden',
-            background: '#060d1a',
+            background: 'var(--navy-950)',
             padding: '24px',
           }}>
             {/* Centered content — max 1100px */}

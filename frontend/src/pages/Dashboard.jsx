@@ -8,24 +8,29 @@ import LoadingSpinner from '../components/ui/LoadingSpinner';
 import ErrorMessage from '../components/ui/ErrorMessage';
 import { STATUS_COLOR, SEVERITY_COLOR } from '../constants/enums';
 import { useCurrentUser } from '../useCurrentUser';
+import { detectOutages } from '../utils/detectOutages';
+import TicketStatusPieChart from '../components/charts/TicketStatusPieChart';
+import SeverityBarChart from '../components/charts/SeverityBarChart';
+import AppComplaintsBarChart from '../components/charts/AppComplaintsBarChart';
+import DailyTicketsLineChart from '../components/charts/DailyTicketsLineChart';
 
-function detectOutages(tickets) {
-  const appCount = {};
-  const ONE_HOUR = 60 * 60 * 1000;
-  const now = Date.now();
-  tickets.forEach(t => {
-    if (t.status === 'open') {
-      const age = now - new Date(t.created_at).getTime();
-      if (age <= ONE_HOUR) {
-        const appName = t.primary_application_name || 'Unknown';
-        appCount[appName] = (appCount[appName] || 0) + 1;
-      }
-    }
-  });
-  return Object.entries(appCount)
-    .filter(([, count]) => count >= 3)
-    .map(([app, count]) => ({ app, count }));
+function ChartCard({ title, delay, children }) {
+  return (
+    <div
+      className="animate-in"
+      style={{
+        animationDelay: `${delay}ms`,
+        background: 'var(--surface-1)', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-card)',
+        padding: '16px 18px',
+      }}
+    >
+      <h3 style={{ marginBottom: 10 }}>{title}</h3>
+      {children}
+    </div>
+  );
 }
+
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -61,41 +66,37 @@ function Dashboard() {
   const outages  = detectOutages(tickets);
   const recent   = tickets.slice(0, 8);
 
+  // Real week-over-week trend for the "Total Tickets" card (no fake numbers).
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const last7 = tickets.filter(t => now - new Date(t.created_at).getTime() <= 7 * ONE_DAY).length;
+  const prev7 = tickets.filter(t => {
+    const age = now - new Date(t.created_at).getTime();
+    return age > 7 * ONE_DAY && age <= 14 * ONE_DAY;
+  }).length;
+  let totalTrend;
+  if (prev7 === 0) {
+    totalTrend = last7 > 0 ? `+${last7} This Week` : 'This Week';
+  } else {
+    const pct = Math.round(((last7 - prev7) / prev7) * 100);
+    totalTrend = `${pct >= 0 ? '+' : ''}${pct}% This Week`;
+  }
+
   return (
     <div>
       {/* Header — NO h1, topbar handles title */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
-        <button className="btn btn-primary" onClick={() => navigate('/submit')}>
+        <button className="btn btn-gradient" onClick={() => navigate('/submit')}>
           + New Ticket
         </button>
       </div>
 
       {/* Stat Cards */}
       <div className="grid-4" style={{ marginBottom: 20 }}>
-        <div style={{ background:'var(--surface-1)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)', padding:'18px 20px', boxShadow:'var(--shadow-card)', position:'relative', overflow:'hidden' }}>
-          <div style={{ position:'absolute', top:0, left:0, right:0, height:2, background:'var(--accent)', opacity:0.6 }}></div>
-          <div style={{ position:'absolute', top:14, right:16, fontSize:20, opacity:0.12 }}>📋</div>
-          <div style={{ fontSize:'2rem', fontWeight:700, color:'var(--text-primary)', lineHeight:1.1 }}>{tickets.length}</div>
-          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.08em', marginTop:6 }}>Total Tickets</div>
-        </div>
-        <div style={{ background:'var(--surface-1)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)', padding:'18px 20px', boxShadow:'var(--shadow-card)', position:'relative', overflow:'hidden' }}>
-          <div style={{ position:'absolute', top:0, left:0, right:0, height:2, background:'var(--success)', opacity:0.6 }}></div>
-          <div style={{ position:'absolute', top:14, right:16, fontSize:20, opacity:0.12 }}>🟢</div>
-          <div style={{ fontSize:'2rem', fontWeight:700, color:'var(--success)', lineHeight:1.1 }}>{open}</div>
-          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.08em', marginTop:6 }}>Open</div>
-        </div>
-        <div style={{ background:'var(--surface-1)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)', padding:'18px 20px', boxShadow:'var(--shadow-card)', position:'relative', overflow:'hidden' }}>
-          <div style={{ position:'absolute', top:0, left:0, right:0, height:2, background:'var(--warning)', opacity:0.6 }}></div>
-          <div style={{ position:'absolute', top:14, right:16, fontSize:20, opacity:0.12 }}>🟡</div>
-          <div style={{ fontSize:'2rem', fontWeight:700, color:'var(--warning)', lineHeight:1.1 }}>{needsTriage}</div>
-          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.08em', marginTop:6 }}>Needs Triage</div>
-        </div>
-        <div style={{ background:'var(--surface-1)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)', padding:'18px 20px', boxShadow:'var(--shadow-card)', position:'relative', overflow:'hidden' }}>
-          <div style={{ position:'absolute', top:0, left:0, right:0, height:2, background:'var(--info)', opacity:0.6 }}></div>
-          <div style={{ position:'absolute', top:14, right:16, fontSize:20, opacity:0.12 }}>📱</div>
-          <div style={{ fontSize:'2rem', fontWeight:700, color:'var(--info)', lineHeight:1.1 }}>{appCount ?? '—'}</div>
-          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.08em', marginTop:6 }}>Registered Apps</div>
-        </div>
+        <StatCard icon="📄" value={tickets.length} label="Total Tickets" trendLabel={totalTrend} color="var(--accent)" delay={0} />
+        <StatCard icon="🟢" value={open} label="Open" trendLabel="Currently Active" color="var(--success)" delay={80} />
+        <StatCard icon="⚠️" value={needsTriage} label="Needs Triage" trendLabel={needsTriage === 0 ? 'No Pending' : 'Awaiting Classification'} color="var(--warning)" delay={160} />
+        <StatCard icon="📦" value={appCount ?? '—'} label="Registered Apps" trendLabel="Installed" color="var(--info)" delay={240} />
       </div>
 
       {/* Outage Alert */}
@@ -108,6 +109,14 @@ function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Analytics */}
+      <div className="grid-2" style={{ marginBottom: 20 }}>
+        <ChartCard title="Tickets by Status" delay={0}><TicketStatusPieChart tickets={tickets} /></ChartCard>
+        <ChartCard title="Tickets by Severity" delay={80}><SeverityBarChart tickets={tickets} /></ChartCard>
+        <ChartCard title="Application-wise Complaints" delay={160}><AppComplaintsBarChart tickets={tickets} /></ChartCard>
+        <ChartCard title="Daily Tickets (Last 14 Days)" delay={240}><DailyTicketsLineChart tickets={tickets} /></ChartCard>
+      </div>
 
       {/* Recent Tickets */}
       <div style={{ background:'var(--surface-1)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)', boxShadow:'var(--shadow-card)', overflow:'hidden', marginBottom: 20 }}>
@@ -128,7 +137,7 @@ function Dashboard() {
               {recent.length === 0 ? (
                 <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--text-muted)', padding:32 }}>No tickets found</td></tr>
               ) : recent.map(t => (
-                <tr key={t.id}
+                <tr key={t.ticket_number || t.id}
                   onClick={() => navigate(`/tickets/${t.ticket_number || t.id}`)}
                   style={{ cursor:'pointer', borderBottom:'1px solid var(--border-light)' }}
                   onMouseEnter={e => e.currentTarget.style.background='var(--surface-2)'}

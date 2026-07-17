@@ -12,7 +12,7 @@ import io
 import numpy as np
 import websockets
 
-WS_URL = "ws://192.168.1.34:8000/api/voice/ws/vad-stream"
+WS_URL = "ws://127.0.0.1:8000/api/voice/ws/vad-stream"
 WAV_PATH = "voice/static_prompts/greeting.wav"
 SAMPLE_RATE = 16000
 CHUNK_SAMPLES = 1600  # 100ms chunks

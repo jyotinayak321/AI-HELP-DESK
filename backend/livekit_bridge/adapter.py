@@ -80,9 +80,6 @@ class _SessionAudioState:
     # audio stream. Stored so connection_manager can cancel it BEFORE
     # calling room.disconnect(), preventing capture_frame on a closed source.
     recv_task: Optional[asyncio.Task] = field(default=None, repr=False)
-    # Per-session lock: prevents concurrent pipeline runs (manual flush + VAD
-    # end_of_speech) from both entering _run_voice_pipeline simultaneously.
-    pipeline_lock: object = field(default_factory=asyncio.Lock)
 
 
 # ── Notify callback type ─────────────────────────────────────────────────────
@@ -385,28 +382,10 @@ class LiveKitAdapter:
 
             if vad_result == "end_of_speech":
                 # ── Build in-memory WAV from accumulated PCM ──────────────
-                # Acquire the per-session lock so a concurrent manual flush
-                # (Stop & Submit button) cannot also enter the pipeline.
-                if state.pipeline_lock.locked():
-                    logger.info(
-                        "[VAD] session=%s  end_of_speech while pipeline already running "
-                        "(flush in progress?) — skipping this utterance",
-                        session_id,
-                    )
-                    _reset_state(state)
-                    return None
-                async with state.pipeline_lock:
-                    wav_bytes = _build_wav(state.speech_buffer)
-                    _reset_state(state)
-                    # ── TRACE LOG (VAD PATH): calling the shared pipeline ──────────
-                    logger.info(
-                        "[TRACE-VAD-PIPELINE] end_of_speech triggered: session=%s  "
-                        "wav_bytes=%d  "
-                        "Calling _run_voice_pipeline() — SAME function as flush path.",
-                        session_id, len(wav_bytes),
-                    )
-                    # ── Delegate entire voice pipeline to existing modules ─────
-                    return await self._run_voice_pipeline(session_id, wav_bytes)
+                wav_bytes = _build_wav(state.speech_buffer)
+                _reset_state(state)
+                # ── Delegate entire voice pipeline to existing modules ─────
+                return await self._run_voice_pipeline(session_id, wav_bytes)
 
             elif vad_result == "timeout":
                 _reset_state(state)
@@ -542,45 +521,17 @@ class LiveKitAdapter:
         from voice.stt import SpeechToTextEngine
         from voice.tts import TextToSpeechEngine
 
-        # ── TRACE LOG: SINGLE SHARED PIPELINE ENTRY ──────────────────────────────
-        # Both VAD end_of_speech and manual Stop & Submit converge here.
-        # Check your call stack: caller is either process_live_audio() (VAD path)
-        # or flush_speech_buffer() (manual path). Both are identical from this point.
-        import traceback
-        caller_frame = traceback.extract_stack()[-2]
-        logger.info(
-            "[TRACE-PIPELINE-ENTRY] _run_voice_pipeline CALLED: session=%s  "
-            "wav_bytes=%d  caller_function='%s' (line %d in %s)  "
-            "This is the ONE shared pipeline — both VAD and flush converge here.",
-            session_id, len(wav_bytes),
-            caller_frame.name, caller_frame.lineno, caller_frame.filename.split('\\')[-1],
-        )
-
         session = self._session_manager.get_session(session_id)
         if session is None:
             logger.warning(
-                "[TRACE-PIPELINE-ENTRY] session=%s NOT FOUND in VoiceSessionManager — "
-                "returning None. The session may have been ended or never created.",
-                session_id,
+                "Adapter: session %s not found in VoiceSessionManager", session_id
             )
             return None
-
-        logger.info(
-            "[TRACE-PIPELINE-ENTRY] session=%s  current_state=%s  service_no=%s",
-            session_id,
-            session.state.value if hasattr(session.state, 'value') else session.state,
-            getattr(session, 'service_no', 'N/A'),
-        )
 
         # ── STT ── (Q1: single lock, CPU-bound in executor)
         await self._notify(session_id, "processing", {"stage": "stt"})
         loop = asyncio.get_event_loop()
 
-        logger.info(
-            "[TRACE-STT] Acquiring STT lock and running transcription: session=%s  "
-            "wav_bytes=%d",
-            session_id, len(wav_bytes),
-        )
         async with _stt_lock:
             stt = SpeechToTextEngine(
                 model_size=settings.STT_MODEL_SIZE,
@@ -591,23 +542,7 @@ class LiveKitAdapter:
                 None, lambda: stt.transcribe(wav_bytes)
             )
 
-        logger.info(
-            "[TRACE-STT] STT result: session=%s  text=%r  is_silent=%s  "
-            "confidence=%.3f  language=%s",
-            session_id,
-            (stt_result.text or '')[:120],
-            stt_result.is_silent,
-            stt_result.confidence,
-            stt_result.language,
-        )
-
         if stt_result.is_silent or not stt_result.text.strip():
-            logger.info(
-                "[TRACE-STT] STT result is SILENT or empty — session=%s  "
-                "is_silent=%s  text=%r  "
-                "Returning None (pipeline ends here, no state change, no TTS).",
-                session_id, stt_result.is_silent, stt_result.text,
-            )
             await self._notify(session_id, "silent", {})
             return None
 
@@ -618,34 +553,15 @@ class LiveKitAdapter:
         })
 
         # ── Route by current session state (read-only routing) ──
-        logger.info(
-            "[TRACE-ROUTE] Calling _route_by_state: session=%s  state=%s",
-            session_id,
-            session.state.value if hasattr(session.state, 'value') else session.state,
-        )
         response_text = await self._route_by_state(session_id, session, stt_result)
-        logger.info(
-            "[TRACE-ROUTE] _route_by_state returned: session=%s  "
-            "response_text_is_none=%s  response_text_preview=%r",
-            session_id, response_text is None,
-            (response_text or '')[:80],
-        )
         if not response_text:
             return None
 
         # ── TTS ── (CPU-bound — run in executor to avoid blocking event loop)
         await self._notify(session_id, "processing", {"stage": "tts"})
-        logger.info(
-            "[TRACE-TTS] Synthesising TTS: session=%s  text_preview=%r",
-            session_id, response_text[:80],
-        )
         tts = TextToSpeechEngine()
         wav_response = await loop.run_in_executor(
             None, lambda: tts.synthesise(response_text)
-        )
-        logger.info(
-            "[TRACE-TTS] TTS result: session=%s  wav_size=%s bytes",
-            session_id, len(wav_response) if wav_response else 0,
         )
 
         return wav_response if wav_response else None
@@ -684,6 +600,9 @@ class LiveKitAdapter:
 
         elif state == SessionState.CAPTURING_COMPLAINT:
             return await self._handle_complaint(session_id, session, stt_result)
+
+        elif state == SessionState.ASK_ANOTHER_COMPLAINT:
+            return await self._handle_another_complaint(session_id, stt_result)
 
         else:
             logger.info(
@@ -753,15 +672,19 @@ class LiveKitAdapter:
         """
         Detect yes/no from the caller to confirm the service number.
         Transitions session state via VoiceSessionManager.
+
+        Reuses the richer YES_WORDS/NO_WORDS sets (with punctuation
+        stripping) from routers/voice.py — the same word lists that
+        back the REST /confirm-audio endpoint — so both transports
+        agree on what counts as a yes/no.
         """
         from voice.session import SessionState
         from voice.prompts import get_prompt_text
+        from routers.voice import YES_WORDS, NO_WORDS
 
-        text = stt_result.text.lower().strip()
-        confirmed = any(w in text for w in ["yes", "correct", "right", "haan", "ha"])
-        rejected  = any(w in text for w in ["no", "wrong", "nahi", "nope", "incorrect"])
+        is_yes, is_no = _parse_yes_no(stt_result.text, YES_WORDS, NO_WORDS)
 
-        if confirmed:
+        if is_yes and not is_no:
             logger.info(
                 "[STATE TRANSITION] session=%s  "
                 "CONFIRMING_SERVICE_NUMBER → CAPTURING_COMPLAINT  "
@@ -776,7 +699,7 @@ class LiveKitAdapter:
             })
             return get_prompt_text("ask_complaint")
 
-        elif rejected:
+        elif is_no and not is_yes:
             logger.info(
                 "[STATE TRANSITION] session=%s  "
                 "CONFIRMING_SERVICE_NUMBER → CAPTURING_SERVICE_NUMBER  "
@@ -800,6 +723,57 @@ class LiveKitAdapter:
             )
             # Unclear — ask again
             return get_prompt_text("confirm_yes_no")
+
+    async def _handle_another_complaint(
+        self, session_id: str, stt_result
+    ) -> Optional[str]:
+        """
+        R-42: "Do you have another complaint?" yes/no routing, mirroring
+        the REST POST /another-complaint endpoint. Yes loops back to
+        service-number capture (fresh retry budget); No ends the call.
+        """
+        from voice.session import SessionState
+        from voice.prompts import get_prompt_text
+        from routers.voice import YES_WORDS, NO_WORDS
+
+        is_yes, is_no = _parse_yes_no(stt_result.text, YES_WORDS, NO_WORDS)
+
+        if is_yes and not is_no:
+            logger.info(
+                "[STATE TRANSITION] session=%s  "
+                "ASK_ANOTHER_COMPLAINT → CAPTURING_SERVICE_NUMBER  "
+                "transcript=%r",
+                session_id, stt_result.text[:120],
+            )
+            self._session_manager.transition(
+                session_id,
+                SessionState.CAPTURING_SERVICE_NUMBER,
+                svc_retries=0,   # fresh retry budget for the next complaint
+            )
+            await self._notify(session_id, "state_change", {
+                "state": SessionState.CAPTURING_SERVICE_NUMBER.value,
+            })
+            return get_prompt_text("ask_service_number")
+
+        elif is_no and not is_yes:
+            logger.info(
+                "[STATE TRANSITION] session=%s  "
+                "ASK_ANOTHER_COMPLAINT → COMPLETED  transcript=%r",
+                session_id, stt_result.text[:120],
+            )
+            self._session_manager.transition(session_id, SessionState.COMPLETED)
+            await self._notify(session_id, "state_change", {
+                "state": SessionState.COMPLETED.value,
+            })
+            return get_prompt_text("goodbye")
+
+        else:
+            logger.info(
+                "[STATE TRANSITION] session=%s  "
+                "ASK_ANOTHER_COMPLAINT → (re-prompt, unclear)  transcript=%r",
+                session_id, stt_result.text[:120],
+            )
+            return "Sorry, I didn't understand. Please say Yes or No."
 
     async def _handle_complaint(
         self, session_id: str, session, stt_result
@@ -870,13 +844,13 @@ class LiveKitAdapter:
             await self._notify(session_id, "state_change", {
                 "state": SessionState.OPERATOR_REVIEW.value,
                 "transcript": result_data.corrected_transcript,
-                "fault_type": result_data.fault_type,
-                "severity": result_data.severity,
+                "fault_type_proposal": result_data.fault_type,
+                "severity_proposal": result_data.severity,
                 "application": result_data.candidates[0].application_name if result_data.candidates else "Unknown",
                 "intake_id": result_data.intake_id,
-                "candidates": [c.model_dump() for c in result_data.candidates] if result_data.candidates else [],
-                "potential_duplicates": result_data.potential_duplicates or [],
-                "is_repeat_caller": result_data.is_repeat_caller or False,
+                # Full candidate list — ClassifyReview.jsx needs application_id/
+                # is_primary per candidate, not just the primary app's name.
+                "candidates": [c.model_dump() for c in result_data.candidates],
             })
 
             return result_data.prompt_text
@@ -910,96 +884,25 @@ class LiveKitAdapter:
                 session_id, event, exc,
             )
 
-    async def flush_speech_buffer(self, session_id: str) -> Optional[bytes]:
-        """
-        Manual end-of-speech trigger — called when the user presses "Stop & Submit".
-
-        Flushes whatever PCM has been accumulated in the speech_buffer for this
-        session and immediately runs the full voice pipeline on it, as if the
-        VAD had detected end_of_speech naturally.
-
-        Returns
-        -------
-        Optional[bytes]
-            WAV bytes from the TTS response if a pipeline result was generated.
-            None if the buffer is empty (nothing to flush).
-        """
-        # ── TRACE LOG A: flush_speech_buffer entered ────────────────────────────
-        logger.info(
-            "[TRACE-FLUSH-A] flush_speech_buffer ENTERED: session=%s  "
-            "known_sessions=%s",
-            session_id, list(self._states.keys()),
-        )
-
-        state = self._states.get(session_id)
-
-        # ── TRACE LOG B: state lookup result ───────────────────────────────────
-        if state is None:
-            logger.info(
-                "[TRACE-FLUSH-B] STATE NOT FOUND for session=%s — "
-                "session not registered in adapter._states. "
-                "This means ConnectionManager.register_session() was never called, "
-                "or session was already unregistered. Known sessions: %s",
-                session_id, list(self._states.keys()),
-            )
-            return None
-
-        buffer_bytes = len(state.speech_buffer)
-        logger.info(
-            "[TRACE-FLUSH-B] STATE FOUND for session=%s  "
-            "speech_buffer=%d bytes  mic_enabled=%s  pipeline_locked=%s  "
-            "was_speaking=%s",
-            session_id, buffer_bytes,
-            state.mic_enabled, state.pipeline_lock.locked(),
-            state.was_speaking,
-        )
-
-        # ── TRACE LOG C: buffer empty check ──────────────────────────────────
-        if not state.speech_buffer:
-            logger.info(
-                "[TRACE-FLUSH-C] BUFFER EMPTY for session=%s — "
-                "nothing to flush. Possible causes: (1) mic not yet enabled, "
-                "(2) audio arrived but VAD already drained the buffer in a "
-                "concurrent end_of_speech event, (3) mic gate is blocking audio "
-                "(mic_enabled=%s).",
-                session_id, state.mic_enabled,
-            )
-            return None
-
-        # ── TRACE LOG D: lock contention check ──────────────────────────────
-        if state.pipeline_lock.locked():
-            logger.info(
-                "[TRACE-FLUSH-D] PIPELINE LOCK HELD for session=%s — "
-                "a concurrent VAD end_of_speech is already running the pipeline. "
-                "Flush skipped to prevent double-run.",
-                session_id,
-            )
-            return None
-
-        # ── TRACE LOG E: snapshotting buffer and calling shared pipeline ──────
-        async with state.pipeline_lock:
-            # Snapshot and reset buffer ATOMICALLY inside the lock.
-            # After this point, the receive_track loop will write into a fresh buffer.
-            wav_bytes = _build_wav(state.speech_buffer)
-            _reset_state(state)
-            logger.info(
-                "[TRACE-FLUSH-E] BUFFER SNAPSHOTTED — session=%s  "
-                "pcm_bytes_in_buffer=%d  wav_bytes_built=%d  "
-                "Now calling _run_voice_pipeline() — SAME function as VAD end_of_speech path.",
-                session_id, buffer_bytes, len(wav_bytes),
-            )
-            result = await self._run_voice_pipeline(session_id, wav_bytes)
-            logger.info(
-                "[TRACE-FLUSH-E] _run_voice_pipeline RETURNED: session=%s  "
-                "result_is_none=%s  result_size=%s bytes",
-                session_id, result is None,
-                len(result) if result else 0,
-            )
-            return result
-
-
 
 # ── Module-level helpers (pure functions, no class state) ────────────────────
+
+def _parse_yes_no(text: str, yes_words: frozenset, no_words: frozenset):
+    """
+    Parse a transcript for yes/no intent using the given word sets.
+
+    Strips punctuation so "No." matches "no", mirroring the REST
+    /confirm-audio and /another-complaint endpoints in routers/voice.py.
+    Returns (is_yes, is_no) — both may be False if the intent is unclear,
+    or both True in the (rare) ambiguous case, matching the REST behaviour.
+    """
+    import re as _re
+    clean_text = _re.sub(r'[^\w\s]', '', (text or "").lower().strip())
+    words = set(clean_text.split())
+    is_yes = bool(words & yes_words)
+    is_no = bool(words & no_words)
+    return is_yes, is_no
+
 
 # Words that — when they make up the entirety of an utterance — indicate a
 # confirmation response rather than a genuine complaint. Used by

@@ -1,5 +1,5 @@
 """
-voice/stt.py Speech-to-Text Engine (Phase 2)
+voice/stt.py ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â Speech-to-Text Engine (Phase 2)
 =================================================
 Wraps the faster-whisper library for local, GPU-accelerated,
 multilingual speech recognition.

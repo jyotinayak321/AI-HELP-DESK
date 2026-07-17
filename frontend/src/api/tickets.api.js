@@ -7,4 +7,4 @@ export const listTickets = (params = {}) => api.get('/api/tickets', { params });
 export const updateTicket = (ticketNumber, data) => api.patch(`/api/tickets/${ticketNumber}`, data);
 export const getSimilarResolutions = (ticketNumber) => api.get(`/api/tickets/${ticketNumber}/similar-resolutions`);
 export const getTicketHistory = (ticketNumber) => api.get(`/api/tickets/${ticketNumber}/history`);
-export const reanalyzeIntake = (intakeId, data) => api.post(`/api/intakes/${intakeId}/reanalyze`, data);
+

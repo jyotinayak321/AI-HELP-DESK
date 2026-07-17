@@ -1,20 +1,23 @@
+import logging
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from routers.admin import router as admin_router
 from routers.tickets import router as tickets_router
 from routers.voice import router as voice_router
-from routers.livekit import router as livekit_router   # Phase 4: LiveKit transport
+from routers.livekit import router as livekit_router
 from security import get_current_user, CurrentUser, require_operator
 from config import settings
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 import uvicorn
-import os
+
+# Without this, every logger.info() call in the app (voice session FSM
+# transitions, STT/TTS timing, etc.) is silently dropped — the root
+# logger defaults to WARNING with no handler attached.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 app = FastAPI(
     title="AI Help Desk",
-    description="Complaint Classification Phase 1 + Voice Layer Phase 2 + LiveKit Phase 4",
-    version="4.0.0",
+    description="Complaint Classification Phase 1 + Voice Layer Phase 2",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -27,10 +30,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(admin_router,   prefix="/api/admin",   tags=["Admin"])
-app.include_router(tickets_router, prefix="/api",         tags=["Tickets"])
-app.include_router(voice_router,   prefix="/api/voice",   tags=["Voice"])
-app.include_router(livekit_router, prefix="/api/livekit", tags=["LiveKit"])  # Phase 4
+app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
+app.include_router(tickets_router, prefix="/api", tags=["Tickets"])
+app.include_router(voice_router, prefix="/api/voice", tags=["Voice"])
+app.include_router(livekit_router, prefix="/api/livekit", tags=["LiveKit"])
 
 @app.get("/", tags=["Health"])
 def health_check():
@@ -48,16 +51,6 @@ def get_me(user: CurrentUser = Depends(get_current_user)):
         "managed_team": user.managed_team,
     }
 
-
-# Mount Frontend if exists (Airgapped Deployment)
-frontend_dist_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
-if os.path.isdir(frontend_dist_path):
-    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist_path, "assets")), name="assets")
-
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_frontend(full_path: str):
-        # Serve index.html for all other routes to support React Router
-        return FileResponse(os.path.join(frontend_dist_path, "index.html"))
 
 if __name__ == "__main__":
     uvicorn.run(

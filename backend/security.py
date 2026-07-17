@@ -71,28 +71,15 @@ def _get_keycloak_public_key() -> dict:
         f"{settings.KEYCLOAK_URL}/realms/{settings.KEYCLOAK_REALM}"
         f"/protocol/openid-connect/certs"
     )
-    print("\n========== KEYCLOAK CONFIG ==========")
-    print("KEYCLOAK_URL:", settings.KEYCLOAK_URL)
-    print("REALM:", settings.KEYCLOAK_REALM)
-    print("JWKS URL:", jwks_url)
-    print("====================================")
     try:
         response = httpx.get(jwks_url, timeout=5.0)
-        print("JWKS HTTP Status:", response.status_code)
-        print("JWKS Response:", response.text[:300])
         response.raise_for_status()
         _jwks_cache = response.json()
         return _jwks_cache
-    except Exception:
-        import traceback
-
-        print("\n========== KEYCLOAK ERROR ==========")
-        traceback.print_exc()
-        print("===================================\n")
-
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Cannot reach Keycloak to fetch public key."
+            detail=f"Cannot reach Keycloak to fetch public key: {e}"
         )
 
 
@@ -145,16 +132,6 @@ def get_current_user(
             algorithms=["RS256"],
             options={"verify_aud": False},
         )
-        print("Starting JWT verification...")
-
-        payload = jwt.decode(
-            token,
-            jwks,
-            algorithms=["RS256"],
-            options={"verify_aud": False},
-        )
-
-        print("JWT verified successfully!")
     except HTTPException:
         raise  # Re-raise 503 from Keycloak being down
     except JWTError as e:

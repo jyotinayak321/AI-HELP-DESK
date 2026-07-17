@@ -8,7 +8,7 @@
  */
 
 export const oidcConfig = {
-  authority: `${import.meta.env.VITE_KEYCLOAK_URL || 'http://192.168.1.34:8080'}/realms/ai-helpdesk`,
+  authority: 'http://localhost:8080/realms/ai-helpdesk',
   client_id: 'helpdesk-frontend',
   redirect_uri: window.location.origin,
   post_logout_redirect_uri: window.location.origin,

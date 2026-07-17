@@ -29,46 +29,46 @@ function HistoryPanel({ history }) {
   );
 
   return (
-    <div style={{ ...card, borderColor: '#6EE7B7', background: '#ECFDF5' }}>
-      <div style={{ ...cardTitle, color: '#065F46' }}>✅ Resolution & Audit Trail</div>
+    <div style={{ ...card, borderColor: 'rgba(34,197,94,0.3)', background: 'rgba(34,197,94,0.06)' }}>
+      <div style={{ ...cardTitle, color: 'var(--success)' }}>✅ Resolution & Audit Trail</div>
 
       {/* Final resolution note highlighted at the top */}
       {resolution && (
         <div style={{
-          background: '#D1FAE5', borderRadius: '8px', padding: '12px 14px',
-          marginBottom: '14px', border: '0.5px solid #6EE7B7',
+          background: 'rgba(34,197,94,0.1)', borderRadius: '8px', padding: '12px 14px',
+          marginBottom: '14px', border: '1px solid rgba(34,197,94,0.3)',
         }}>
-          <div style={{ fontSize: '11px', color: '#065F46', fontWeight: 600, marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <div style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 600, marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Final Resolution Note
           </div>
-          <div style={{ fontSize: '13px', color: '#064E3B', lineHeight: '1.7' }}>{resolution.notes}</div>
-          <div style={{ fontSize: '11px', color: '#059669', marginTop: '6px' }}>
+          <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.7' }}>{resolution.notes}</div>
+          <div style={{ fontSize: '11px', color: 'var(--success)', marginTop: '6px' }}>
             Closed by {resolution.changed_by || 'Unknown'} · {fmtDate(resolution.changed_at)}
           </div>
         </div>
       )}
 
       {/* Full timeline */}
-      <div style={{ fontSize: '12px', color: '#065F46', fontWeight: 500, marginBottom: '8px' }}>Full Timeline</div>
+      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500, marginBottom: '8px' }}>Full Timeline</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {history.map((h, i) => (
           <div key={h.id} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: '3px' }}>
               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: STATUS_COLOR[h.new_status] || '#94a3b8', flexShrink: 0 }} />
-              {i < history.length - 1 && <div style={{ width: '1px', flex: 1, background: '#d1fae5', marginTop: '2px', minHeight: '16px' }} />}
+              {i < history.length - 1 && <div style={{ width: '1px', flex: 1, background: 'var(--border-light)', marginTop: '2px', minHeight: '16px' }} />}
             </div>
             <div style={{ flex: 1, paddingBottom: '8px' }}>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '12px', fontWeight: 500, color: '#065F46' }}>
+                <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)' }}>
                   {h.old_status ? `${h.old_status} → ` : ''}{h.new_status}
                 </span>
-                <span style={{ fontSize: '11px', color: '#6EE7B7', background: '#065F46', padding: '1px 6px', borderRadius: '4px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--success)', background: 'rgba(34,197,94,0.12)', padding: '1px 6px', borderRadius: '4px' }}>
                   {h.changed_by || 'system'}
                 </span>
-                <span style={{ fontSize: '11px', color: '#64748b' }}>{fmtDate(h.changed_at)}</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{fmtDate(h.changed_at)}</span>
               </div>
               {h.notes?.trim() && (
-                <div style={{ fontSize: '12px', color: '#374151', marginTop: '4px', lineHeight: '1.6' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: '1.6' }}>
                   {h.notes}
                 </div>
               )}
@@ -85,34 +85,34 @@ function SimilarResolutionsPanel({ resolutions }) {
   if (!resolutions.length) return null;
 
   return (
-    <div style={{ ...card, borderColor: '#93C5FD', background: '#EFF6FF' }}>
-      <div style={{ ...cardTitle, color: '#1E40AF' }}>💡 How was this fixed before?</div>
-      <div style={{ fontSize: '12px', color: '#3B82F6', marginBottom: '12px' }}>
+    <div style={{ ...card, borderColor: 'rgba(56,189,248,0.3)', background: 'rgba(56,189,248,0.06)' }}>
+      <div style={{ ...cardTitle, color: 'var(--info)' }}>💡 How was this fixed before?</div>
+      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
         The AI found past tickets with a similar complaint. Here's how they were resolved:
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {resolutions.map((r, i) => (
           <div key={i} style={{
-            background: '#fff', padding: '12px 14px', borderRadius: '8px',
-            border: '0.5px solid #93C5FD',
+            background: 'var(--surface-2)', padding: '12px 14px', borderRadius: '8px',
+            border: '1px solid rgba(56,189,248,0.25)',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span style={{ fontFamily: 'monospace', fontSize: '12px', color: '#185FA5', fontWeight: 500 }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--accent)', fontWeight: 500 }}>
                 {r.ticket_number}
               </span>
               <span style={{
                 fontSize: '11px', fontWeight: 600,
-                color: r.similarity_score > 0.8 ? '#059669' : r.similarity_score > 0.65 ? '#D97706' : '#64748b',
-                background: r.similarity_score > 0.8 ? '#D1FAE5' : r.similarity_score > 0.65 ? '#FEF3C7' : '#f1f5f9',
+                color: r.similarity_score > 0.8 ? 'var(--success)' : r.similarity_score > 0.65 ? 'var(--warning)' : 'var(--text-muted)',
+                background: r.similarity_score > 0.8 ? 'rgba(34,197,94,0.12)' : r.similarity_score > 0.65 ? 'rgba(245,158,11,0.12)' : 'var(--surface-3)',
                 padding: '2px 8px', borderRadius: '6px',
               }}>
                 {Math.round(r.similarity_score * 100)}% match
               </span>
             </div>
-            <div style={{ fontSize: '13px', color: '#1e293b', lineHeight: '1.7', fontStyle: 'italic' }}>
+            <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.7', fontStyle: 'italic' }}>
               "{r.notes}"
             </div>
-            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px' }}>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
               Resolved by <strong>{r.changed_by || 'operator'}</strong> · {fmtDate(r.changed_at)}
             </div>
           </div>
@@ -206,7 +206,7 @@ function TicketDetail() {
     <div style={{ maxWidth: '680px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
       <button onClick={() => navigate(state?.from || '/tickets')} style={{
-        background: 'none', border: 'none', color: '#185FA5',
+        background: 'none', border: 'none', color: 'var(--accent)',
         fontSize: '13px', cursor: 'pointer', alignSelf: 'flex-start', padding: 0,
       }}>
         ← Back to {state?.from === '/queue' ? 'Queue' : 'Tickets'}
@@ -216,14 +216,14 @@ function TicketDetail() {
       <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <div style={{ fontFamily: 'monospace', fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--text-muted)', marginBottom: '4px' }}>
               {ticket.ticket_number}
             </div>
-            <div style={{ fontSize: '15px', fontWeight: 500 }}>
+            <div style={{ fontSize: '15px', fontWeight: 500, color: 'var(--text-primary)' }}>
               {ticket.primary_application_name ?? 'Unclassified'}
             </div>
             {ticket.assignee_id && (
-              <div style={{ fontSize: '12px', color: '#475569', marginTop: '4px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
                 👤 Assigned to: <strong>{ticket.assignee_id}</strong>
               </div>
             )}
@@ -238,32 +238,32 @@ function TicketDetail() {
       {/* ── Complaint card ──────────────────────────────────────────── */}
       <div style={card}>
         <div style={cardTitle}>Complaint</div>
-        <div style={{ fontSize: '13px', lineHeight: '1.7', background: '#f8fafc', borderRadius: '8px', padding: '12px' }}>
+        <div style={{ fontSize: '13px', lineHeight: '1.7', color: 'var(--text-primary)', background: 'var(--navy-800)', borderRadius: '8px', padding: '12px' }}>
           {ticket.original_complaint_text ?? 'No complaint text available.'}
         </div>
-        <div style={{ fontSize: '12px', color: '#64748b', marginTop: '10px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-          <span>Service No: <strong>{ticket.complainant_service_no}</strong></span>
-          {ticket.complainant_rank && <span>Rank: <strong>{ticket.complainant_rank}</strong></span>}
-          {ticket.complainant_unit && <span>Unit: <strong>{ticket.complainant_unit}</strong></span>}
-          <span>Fault: <strong>{ticket.fault_type?.replace(/_/g, ' ')}</strong></span>
+        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '10px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+          <span>Service No: <strong style={{ color: 'var(--text-secondary)' }}>{ticket.complainant_service_no}</strong></span>
+          {ticket.complainant_rank && <span>Rank: <strong style={{ color: 'var(--text-secondary)' }}>{ticket.complainant_rank}</strong></span>}
+          {ticket.complainant_unit && <span>Unit: <strong style={{ color: 'var(--text-secondary)' }}>{ticket.complainant_unit}</strong></span>}
+          <span>Fault: <strong style={{ color: 'var(--text-secondary)' }}>{ticket.fault_type?.replace(/_/g, ' ')}</strong></span>
         </div>
       </div>
 
       {/* ── Impacted Infrastructure ─────────────────────────────────── */}
       {ticket.dependencies?.length > 0 && (
-        <div style={{ ...card, borderColor: '#F09595', background: '#FCEBEB' }}>
-          <div style={{ ...cardTitle, color: '#A32D2D' }}>⚠ Impacted Infrastructure</div>
-          <div style={{ fontSize: '13px', color: '#791F1F', marginBottom: '10px' }}>
+        <div style={{ ...card, borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.06)' }}>
+          <div style={{ ...cardTitle, color: 'var(--danger)' }}>⚠ Impacted Infrastructure</div>
+          <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '10px' }}>
             The following underlying services may be experiencing a cascaded failure:
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {ticket.dependencies.map(dep => (
               <div key={dep.application_id} style={{
-                background: '#fff', padding: '10px 12px', borderRadius: '6px',
-                border: '0.5px solid #F09595', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                background: 'var(--surface-2)', padding: '10px 12px', borderRadius: '6px',
+                border: '1px solid rgba(239,68,68,0.25)', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}>
-                <strong style={{ color: '#A32D2D', fontSize: '13px' }}>{dep.application_name}</strong>
-                <span style={{ fontSize: '11px', color: '#A32D2D', background: '#FCEBEB', padding: '2px 6px', borderRadius: '4px' }}>
+                <strong style={{ color: 'var(--danger)', fontSize: '13px' }}>{dep.application_name}</strong>
+                <span style={{ fontSize: '11px', color: 'var(--danger)', background: 'rgba(239,68,68,0.12)', padding: '2px 6px', borderRadius: '4px' }}>
                   Nature: {dep.dependency_nature?.replace(/_/g, ' ')}
                 </span>
               </div>
@@ -297,7 +297,7 @@ function TicketDetail() {
                 ))}
               </select>
               {isClosed && (
-                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
                   This ticket is closed. Status can no longer be changed.
                 </div>
               )}
@@ -305,7 +305,7 @@ function TicketDetail() {
 
             <div>
               <label style={labelStyle}>
-                Assign To <span style={{ color: '#94a3b8' }}>(service no. or name)</span>
+                Assign To <span style={{ color: 'var(--text-muted)' }}>(service no. or name)</span>
               </label>
               <input
                 value={update.assignee_id}
@@ -331,10 +331,10 @@ function TicketDetail() {
               <label style={labelStyle}>
                 Notes{' '}
                 {update.new_status === 'closed' && (
-                  <span style={{ color: '#e24b4a' }}>* required for closing</span>
+                  <span style={{ color: 'var(--danger)' }}>* required for closing</span>
                 )}
                 {CLOSED_STATUSES.includes(update.new_status) && update.new_status !== 'closed' && (
-                  <span style={{ color: '#059669' }}> (will be saved as resolution note)</span>
+                  <span style={{ color: 'var(--success)' }}> (will be saved as resolution note)</span>
                 )}
               </label>
               <textarea
@@ -357,11 +357,10 @@ function TicketDetail() {
               <button
                 onClick={handleUpdate}
                 disabled={saving || (update.new_status === 'closed' && !update.notes.trim())}
+                className="btn btn-primary"
                 style={{
-                  background: '#185FA5', color: '#fff', border: 'none',
-                  borderRadius: '8px', padding: '10px 20px',
-                  fontSize: '13px', fontWeight: 500, cursor: 'pointer',
                   opacity: (saving || (update.new_status === 'closed' && !update.notes.trim())) ? 0.6 : 1,
+                  alignSelf: 'flex-start',
                 }}
               >
                 {saving ? 'Saving...' : 'Update Ticket'}
@@ -376,14 +375,14 @@ function TicketDetail() {
   );
 }
 
-const card = { background: '#fff', border: '0.5px solid #e2e8f0', borderRadius: '12px', padding: '16px 20px' };
-const cardTitle = { fontWeight: 500, fontSize: '13px', marginBottom: '12px' };
-const labelStyle = { display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px' };
+const card = { background: 'var(--surface-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px', boxShadow: 'var(--shadow-card)' };
+const cardTitle = { fontWeight: 600, fontSize: '13px', marginBottom: '12px', color: 'var(--text-primary)' };
+const labelStyle = { display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' };
 const selectStyle = {
   width: '100%', padding: '9px 12px', fontSize: '13px',
-  border: '0.5px solid #cbd5e1', borderRadius: '8px',
-  outline: 'none', fontFamily: 'inherit', color: '#1a1a2e',
-  background: '#fff',
+  border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
+  outline: 'none', fontFamily: 'inherit', color: 'var(--text-primary)',
+  background: 'var(--navy-800)',
 };
 
 export default TicketDetail;

@@ -2,20 +2,33 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from 'react-oidc-context';
 import { useCurrentUser } from '../../useCurrentUser';
 
-const navItems = [
-  { to: '/dashboard', icon: '⊞', label: 'Dashboard' },
+// Always visible, regardless of role.
+const DASHBOARD_NAV_ITEM = { to: '/dashboard', icon: '⊞', label: 'Dashboard' };
+
+// Operator-only pages — these routes aren't even registered in App.jsx for
+// an admin, so they must not show up here either (they'd be dead links).
+const OPERATOR_NAV_ITEMS = [
   { to: '/submit',    icon: '＋', label: 'Submit Complaint' },
   { to: '/tickets',   icon: '☰', label: 'Tickets' },
   { to: '/registry',  icon: '⊟', label: 'App Registry' },
 ];
 
+// Admin-only page.
+const ADMIN_NAV_ITEM = { to: '/queue', icon: '⚑', label: 'Team Queue' };
+
 export default function Sidebar() {
   const auth = useAuth();
   const navigate = useNavigate();
-  const { user } = useCurrentUser();
+  const { serviceNo, role, isOperator, isAdmin } = useCurrentUser();
 
-  const initials = user?.service_no
-    ? user.service_no.slice(0, 2).toUpperCase()
+  const navItems = [
+    DASHBOARD_NAV_ITEM,
+    ...(isOperator ? OPERATOR_NAV_ITEMS : []),
+    ...(isAdmin ? [ADMIN_NAV_ITEM] : []),
+  ];
+
+  const initials = serviceNo
+    ? serviceNo.slice(0, 2).toUpperCase()
     : 'OP';
 
   const handleLogout = () => {
@@ -59,10 +72,10 @@ export default function Sidebar() {
           <div className="sidebar-avatar">{initials}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="sidebar-user-name truncate">
-              {user?.service_no || 'Operator'}
+              {serviceNo || 'Operator'}
             </div>
             <div className="sidebar-user-role">
-              {user?.role || 'operator'}
+              {role || 'operator'}
             </div>
           </div>
         </div>

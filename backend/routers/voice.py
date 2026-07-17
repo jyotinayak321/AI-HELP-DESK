@@ -36,15 +36,22 @@ from security import CurrentUser, get_current_user, require_operator
 # Phase 2 voice modules
 from voice.stt import SpeechToTextEngine
 from voice.tts import TextToSpeechEngine
-from voice.session import VoiceSessionManager, SessionState, MAX_SERVICE_NUMBER_RETRIES
+from voice.session import SessionState, MAX_SERVICE_NUMBER_RETRIES, session_manager
 from voice.validators import validate_service_number
 from voice.audio import convert_to_wav, detect_silence, detect_format_from_content_type, FrameBuffer
 from voice.vad import StreamingEndpointDetector
+
+# Phase 3 telephony modules
+from services.telephony.dtmf_decoder import StreamingDTMFDetector, DTMFBlockBuffer
 from voice.prompts import (
     get_static_prompt_bytes,
     get_prompt_text,
     render_dynamic_prompt,
 )
+
+# Shared complaint-processing pipeline (also used by livekit_bridge/adapter.py)
+from voice.complaint_processor import process_complaint_transcript
+
 from voice_schemas import (
     VoiceStartResponse,
     VoiceServiceNumberResponse,
@@ -52,17 +59,23 @@ from voice_schemas import (
     VoiceConfirmResponse,
     VoiceConfirmAudioResponse,
     VoiceComplaintResponse,
-    VoiceCandidateApp,
     VoiceStatusResponse,
     VoiceFallbackRequest,
     VoiceFallbackResponse,
+    VoiceAnotherComplaintResponse,
 )
 
 logger = logging.getLogger("routers.voice")
 
-session_manager = VoiceSessionManager()
+# Yes/no intent keywords (English, Hindi, Hinglish) — shared by
+# /confirm-audio and /another-complaint, both of which ask the caller
+# a yes/no question and parse the STT transcript for intent.
+YES_WORDS = {"yes", "yeah", "yep", "correct", "right", "haan", "han", "ha", "bilkul", "sahi", "ok", "okay", "confirm"}
+NO_WORDS  = {"no", "nope", "wrong", "incorrect", "nahi", "nein", "nai", "nah", "retry", "again"}
 
-# Phase 2 voice singletons — lazy-loaded on first use
+# session_manager is imported from voice.session (shared with routers/tickets.py)
+
+# Phase 2 voice singletons ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â lazy-loaded on first use
 _stt_engine: Optional[SpeechToTextEngine] = None
 _tts_engine: Optional[TextToSpeechEngine] = None
 
@@ -91,7 +104,7 @@ router = APIRouter()
 
 
 # =====================================================================
-# 1. POST /voice/start ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â  Start a new voice session
+# 1. POST /voice/start ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Start a new voice session
 # =====================================================================
 
 @router.post("/start", response_model=VoiceStartResponse)
@@ -101,18 +114,21 @@ async def voice_start(
     """
     Initialise a new voice session and return the greeting prompt.
 
-    Phase 4 (LIVEKIT_ENABLED=True): Also creates a LiveKit room using the
-    session_id as the room name, connects the AI agent, and returns the
-    LiveKit token so the browser can join directly.
+    The frontend should play the greeting audio (if available) or
+    display the prompt text, then enable the microphone for service
+    number capture.
 
-    Session is always created first via VoiceSessionManager.
-    LiveKit attaches to it — never the reverse.
-    If LiveKit setup fails, the session continues on the legacy
-    WebSocket/REST audio path (graceful degradation, non-fatal).
+    Phase 4 (LIVEKIT_ENABLED=True): also creates a LiveKit room using the
+    session_id as the room name, connects the AI agent, and returns the
+    LiveKit token so the browser can join directly for real-time audio
+    streaming. The voice session is always created first via
+    VoiceSessionManager; LiveKit attaches to it, never the reverse. If
+    LiveKit setup fails, the session continues on the legacy
+    record/upload REST path (graceful degradation, non-fatal).
     """
     session = session_manager.create_session()
 
-    # Transition from GREETING ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ CAPTURING_SERVICE_NUMBER
+    # Transition from GREETING -> CAPTURING_SERVICE_NUMBER
     session_manager.transition(
         session.session_id,
         SessionState.CAPTURING_SERVICE_NUMBER,
@@ -121,13 +137,11 @@ async def voice_start(
     prompt_text = get_prompt_text("greeting")
     audio_bytes = get_static_prompt_bytes("greeting")
 
-    # ── Phase 4: LiveKit attachment (Q2: this endpoint, not a new one) ─
-    # Q3: runtime backend flag — decision made server-side.
-    # Frontend reads response.livekit_enabled (no build-time env var).
+    # ── Phase 4: LiveKit attachment (runtime flag, decided server-side) ──
     livekit_token: Optional[str] = None
-    livekit_url:   Optional[str] = None
-    room_name:     Optional[str] = None
-    livekit_ready              = False
+    livekit_url: Optional[str] = None
+    room_name: Optional[str] = None
+    livekit_ready = False
 
     if settings.LIVEKIT_ENABLED:
         try:
@@ -161,7 +175,7 @@ async def voice_start(
                 display_name=current_user.service_no,
             )
             livekit_url = settings.LIVEKIT_URL
-            room_name   = sid
+            room_name = sid
             livekit_ready = True
 
             logger.info(
@@ -170,13 +184,11 @@ async def voice_start(
             )
 
         except Exception as exc:
-            # Non-fatal: session continues on legacy WebSocket/REST path.
+            # Non-fatal: session continues on legacy REST audio path.
             logger.error(
                 "LiveKit setup failed for session %s: %s — "
                 "continuing on legacy audio path.",
-                session.session_id,
-                exc,
-                exc_info=True,
+                session.session_id, exc, exc_info=True,
             )
 
     return VoiceStartResponse(
@@ -184,13 +196,11 @@ async def voice_start(
         state=SessionState.CAPTURING_SERVICE_NUMBER.value,
         prompt_text=prompt_text,
         audio_available=audio_bytes is not None,
-        # Q3: runtime flag — frontend reads this, not a build-time env var
         livekit_enabled=livekit_ready,
         livekit_token=livekit_token,
         livekit_url=livekit_url,
         room_name=room_name,
     )
-
 
 
 # =====================================================================
@@ -503,7 +513,7 @@ def voice_confirm(
 
 
 # =====================================================================
-# 3b. POST /voice/confirm-audio  ­  ­  ­ Confirm via voice (say "yes" or "no")
+# 3b. POST /voice/confirm-audio ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Confirm via voice (say "yes" or "no")
 # =====================================================================
 
 @router.post("/confirm-audio", response_model=VoiceConfirmAudioResponse)
@@ -533,7 +543,7 @@ async def voice_confirm_audio(
     source_format = detect_format_from_content_type(content_type)
     wav_bytes = convert_to_wav(raw_bytes, source_format=source_format)
 
-    # Detect silence  prompt to repeat
+    # Detect silence ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â prompt to repeat
     if detect_silence(wav_bytes, source_format="wav"):
         return VoiceConfirmAudioResponse(
             session_id=session_id,
@@ -563,10 +573,7 @@ async def voice_confirm_audio(
     # Remove punctuation so "No." matches "no"
     clean_text = re.sub(r'[^\w\s]', '', text)
 
-    # Detect YES intent
-    YES_WORDS = {"yes", "yeah", "yep", "correct", "right", "haan", "han", "ha", "bilkul", "sahi", "ok", "okay", "confirm"}
-    NO_WORDS  = {"no", "nope", "wrong", "incorrect", "nahi", "nein", "nai", "nah", "retry", "again"}
-
+    # Detect YES/NO intent
     words = set(clean_text.split())
     is_yes = bool(words & YES_WORDS)
     is_no  = bool(words & NO_WORDS)
@@ -595,7 +602,7 @@ async def voice_confirm_audio(
             stt_processing_time_ms=result.processing_time_ms,
         )
 
-    # Unclear  ask again
+    # Unclear ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ask again
     return VoiceConfirmAudioResponse(
         session_id=session_id,
         state=SessionState.CONFIRMING_SERVICE_NUMBER.value,
@@ -608,7 +615,105 @@ async def voice_confirm_audio(
 
 
 # =====================================================================
-# 4. POST /voice/complaint  Upload audio, transcribe & classify
+# 3c. POST /voice/another-complaint — "Do you have another complaint?" (R-42)
+# =====================================================================
+
+@router.post("/another-complaint", response_model=VoiceAnotherComplaintResponse)
+async def voice_another_complaint(
+    session_id: str = Form(...),
+    audio: UploadFile = File(...),
+    current_user: CurrentUser = Depends(require_operator),
+):
+    """
+    After a ticket is created, ask whether the caller has another
+    complaint to report in the same call. Yes loops back to service
+    number capture (re-confirmed, per R-42 design); No ends the call.
+    """
+    session = session_manager.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Voice session not found or expired.")
+
+    if session.state != SessionState.ASK_ANOTHER_COMPLAINT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid state for another-complaint prompt: {session.state.value}",
+        )
+
+    raw_bytes = await audio.read()
+    content_type = audio.content_type or "audio/webm"
+    source_format = detect_format_from_content_type(content_type)
+    wav_bytes = convert_to_wav(raw_bytes, source_format=source_format)
+
+    if detect_silence(wav_bytes, source_format="wav"):
+        return VoiceAnotherComplaintResponse(
+            session_id=session_id,
+            state=SessionState.ASK_ANOTHER_COMPLAINT.value,
+            recognized_text="",
+            wants_another=None,
+            prompt_text="No speech detected. Please say Yes or No.",
+        )
+
+    stt = _get_stt()
+    try:
+        result = stt.transcribe(wav_bytes)
+    except Exception as exc:
+        logger.warning("STT failed during another-complaint for session %s: %s", session_id, exc)
+        return VoiceAnotherComplaintResponse(
+            session_id=session_id,
+            state=SessionState.ASK_ANOTHER_COMPLAINT.value,
+            recognized_text="",
+            wants_another=None,
+            prompt_text="Could not process audio. Please say Yes or No.",
+        )
+
+    text = (result.text or "").lower().strip()
+    logger.info("[another-complaint] session=%s transcript='%s'", session_id, text)
+    clean_text = re.sub(r'[^\w\s]', '', text)
+    words = set(clean_text.split())
+    is_yes = bool(words & YES_WORDS)
+    is_no  = bool(words & NO_WORDS)
+
+    if is_yes and not is_no:
+        session_manager.transition(
+            session_id,
+            SessionState.CAPTURING_SERVICE_NUMBER,
+            svc_retries=0,   # fresh retry budget for the next complaint's service number
+        )
+        return VoiceAnotherComplaintResponse(
+            session_id=session_id,
+            state=SessionState.CAPTURING_SERVICE_NUMBER.value,
+            recognized_text=result.text,
+            wants_another=True,
+            prompt_text=get_prompt_text("ask_service_number"),
+            stt_language=result.language,
+            stt_processing_time_ms=result.processing_time_ms,
+        )
+
+    if is_no and not is_yes:
+        session_manager.transition(session_id, SessionState.COMPLETED)
+        return VoiceAnotherComplaintResponse(
+            session_id=session_id,
+            state=SessionState.COMPLETED.value,
+            recognized_text=result.text,
+            wants_another=False,
+            prompt_text=get_prompt_text("goodbye"),
+            stt_language=result.language,
+            stt_processing_time_ms=result.processing_time_ms,
+        )
+
+    # Unclear — ask again
+    return VoiceAnotherComplaintResponse(
+        session_id=session_id,
+        state=SessionState.ASK_ANOTHER_COMPLAINT.value,
+        recognized_text=result.text,
+        wants_another=None,
+        prompt_text="Sorry, I didn't understand. Please say Yes or No.",
+        stt_language=result.language,
+        stt_processing_time_ms=result.processing_time_ms,
+    )
+
+# =====================================================================
+# 4. POST /voice/complaint ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Upload audio, transcribe & classify
 # =====================================================================
 
 @router.post("/complaint", response_model=VoiceComplaintResponse)
@@ -624,13 +729,12 @@ async def voice_complaint(
     Pipeline:
       1. Convert audio to WAV
       2. Run STT transcription
-      3. Feed transcript to Phase 1 classifier (embedder  classifier  search)
+      3. Feed transcript to Phase 1 classifier (embedder ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ classifier ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ search)
       4. Return classification proposals for operator review
 
     Satisfies R-34 (speech-to-text intake) and R-35 (multilingual).
     The existing classifier is called WITHOUT MODIFICATION (R-39).
     """
-
     session = session_manager.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Voice session not found or expired.")
@@ -692,10 +796,9 @@ async def voice_complaint(
 
     complaint_text = result.text.strip()
 
-    # ── Shared Pipeline Execution ──
-    from voice.complaint_processor import process_complaint_transcript
-    
-    result_data = process_complaint_transcript(
+    # ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ LLM GUARDRAIL ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Verify language + fix STT errors ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+    # ── Delegate to the shared pipeline (also used by the LiveKit adapter) ──
+    proc_result = process_complaint_transcript(
         db_session=db_session,
         session_manager=session_manager,
         session_id=session_id,
@@ -709,31 +812,29 @@ async def voice_complaint(
         stt_language=result.language,
     )
 
-    if result_data.status == "rejected":
+    if proc_result.status == "rejected":
         return VoiceComplaintResponse(
             session_id=session_id,
             state=session.state.value,
-            transcript=result_data.corrected_transcript,
+            transcript=complaint_text,
             confidence=result.confidence,
             stt_language=result.language,
             stt_processing_time_ms=result.processing_time_ms,
-            prompt_text=result_data.prompt_text,
+            prompt_text=proc_result.prompt_text,
         )
 
     return VoiceComplaintResponse(
         session_id=session_id,
         state=SessionState.OPERATOR_REVIEW.value,
-        transcript=result_data.corrected_transcript,
+        transcript=proc_result.corrected_transcript,
         confidence=result.confidence,
         stt_language=result.language,
         stt_processing_time_ms=result.processing_time_ms,
-        intake_id=result_data.intake_id,
-        fault_type_proposal=result_data.fault_type,
-        severity_proposal=result_data.severity,
-        candidates=result_data.candidates or [],
-        potential_duplicates=result_data.potential_duplicates or [],
-        is_repeat_caller=result_data.is_repeat_caller or False,
-        prompt_text=result_data.prompt_text,
+        intake_id=proc_result.intake_id,
+        fault_type_proposal=proc_result.fault_type,
+        severity_proposal=proc_result.severity,
+        candidates=proc_result.candidates,
+        prompt_text=proc_result.prompt_text,
     )
 
 
@@ -786,7 +887,6 @@ def voice_fallback(
 # =====================================================================
 # 6. GET /voice/status ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Query session state
 # =====================================================================
-
 @router.get("/status", response_model=VoiceStatusResponse)
 def voice_status(
     session_id: str = Query(...),
@@ -887,7 +987,7 @@ def voice_char(
         raise HTTPException(
             status_code=404,
             detail=f"No audio clip found for character '{char}'. "
-                   "Run generate_char_clips.py to create missing clips.",
+                "Run generate_char_clips.py to create missing clips.",
         )
 
     with open(clip_path, "rb") as f:
@@ -1026,45 +1126,55 @@ def voice_prompt(
     # Last resort: return the text
     return {"prompt_key": key, "text": fallback_text, "audio_available": False}
 
-
 # =====================================================================
-# 11. WS /voice/ws/vad-stream ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Real-time streaming VAD (end-of-speech detection)
+# 11. WS /voice/ws/vad-stream — Real-time streaming VAD (end-of-speech detection)
 # =====================================================================
 #
-# IMPORTANT: Ye endpoint RAW PCM audio expect karta hai ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
+# IMPORTANT: Ye endpoint RAW PCM audio expect karta hai —
 #   Format:      16-bit signed PCM
 #   Sample rate: 16000 Hz (16kHz)
 #   Channels:    1 (mono)
 #
 # Browser ka MediaRecorder (jo baaki endpoints use karte hain) WebM/Opus
-# deta hai, raw PCM nahi ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â isliye frontend me AudioWorklet/ScriptProcessor
+# deta hai, raw PCM nahi — isliye frontend me AudioWorklet/ScriptProcessor
 # use karna padega jo seedha mic se raw samples nikaale (alag se banega).
 #
-# Client ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Server: binary audio chunks (bytes)
-# Server ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Client: JSON messages:
-#     {"event": "listening"}           ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â connection established
-#     {"event": "speech_started"}      ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â user ne bolna shuru kiya
-#     {"event": "end_of_speech"}       ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â user chup ho gaya, recording stop karo
-#     {"event": "error", "detail": ""} ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â kuch galat hua
+# Client → Server: binary audio chunks (bytes)
+# Server → Client: JSON messages:
+#     {"event": "listening"}           — connection established
+#     {"event": "speech_started"}      — user ne bolna shuru kiya
+#     {"event": "end_of_speech"}       — user chup ho gaya, recording stop karo
+#     {"event": "error", "detail": ""} — kuch galat hua
 # =====================================================================
 
 @router.websocket("/ws/vad-stream")
-async def voice_vad_stream(websocket: WebSocket):
+async def voice_vad_stream(websocket: WebSocket, session_id: Optional[str] = Query(default=None)):
     """
     Real-time WebSocket jo continuously audio chunks receive karta hai
     aur Silero VAD se "end of speech" detect karte hi signal bhejta hai.
 
     Client (browser) yaha connect karega, phir chhote-chhote raw PCM
-    chunks bhejta rahega jab tak server "end_of_speech" event na bheje ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â
+    chunks bhejta rahega jab tak server "end_of_speech" event na bheje —
     tab client recording stop kar dega aur poori WAV file normal REST
-    endpoint (/voice/complaint ya /voice/service-number) pe bhej dega.
+    endpoint (/voice/complaint ya /voice/service-number) pe bhej dega —
+    wahi REST endpoints session_id se FSM transition karte hain, is
+    low-level boundary-detector ka kaam sirf timing signal dena hai.
+
+    session_id (R-42) optional hai — diya jaaye to sirf existence
+    validate + log karte hain taaki server logs me pata chale ye
+    stream kis call se belong karta hai.
     """
     await websocket.accept()
+
+    if session_id is not None and session_manager.get_session(session_id) is None:
+        await websocket.send_json({"event": "error", "detail": "Voice session not found or expired."})
+        await websocket.close()
+        return
 
     # Har naye connection ke liye fresh buffer + detector
     frame_buffer = FrameBuffer()
     detector = StreamingEndpointDetector(
-        silence_duration_ms=2500,
+        silence_duration_ms=800,    # ✅ FIXED: 2500 → 800 (yehi asli delay tha)
         speech_threshold=0.4,
         min_speech_ms=300,
     )
@@ -1074,6 +1184,7 @@ async def voice_vad_stream(websocket: WebSocket):
 
     try:
         await websocket.send_json({"event": "listening"})
+        logger.info("VAD WebSocket connected (session_id=%s)", session_id)
 
         while True:
             # Client se raw PCM bytes receive karo
@@ -1102,9 +1213,199 @@ async def voice_vad_stream(websocket: WebSocket):
                     was_speaking = False
 
     except WebSocketDisconnect:
-        logger.info("VAD WebSocket disconnected normally.")
+        logger.info("VAD WebSocket disconnected normally (session_id=%s).", session_id)
     except Exception as exc:
         logger.error("VAD WebSocket error: %s", exc, exc_info=True)
+        try:
+            await websocket.send_json({"event": "error", "detail": str(exc)})
+        except Exception:
+            pass  # connection already band ho chuki hogi
+
+
+# =====================================================================
+# 12. WS /voice/ws/dtmf-stream — Real-time streaming DTMF detection
+# =====================================================================
+#
+# IMPORTANT: Same raw PCM contract as /ws/vad-stream:
+#   Format:      16-bit signed PCM
+#   Sample rate: 16000 Hz (16kHz)
+#   Channels:    1 (mono)
+#
+# Client → Server: binary audio chunks (bytes)
+# Server → Client: JSON messages:
+#     {"event": "listening"}                          — connection established
+#     {"event": "digit", "digit": "5", "sequence": "5"}   — new key press confirmed
+#     {"event": "sequence_complete", "sequence": "12345"} — caller pressed '#'
+#     {"event": "sequence_cleared"}                       — caller pressed '*'
+#     {"event": "error", "detail": ""}                    — kuch galat hua
+#
+# Separate endpoint from /ws/vad-stream (not piggybacked) — DTMF entry
+# aur speech entry alag call phases hain, alag connection se decouple
+# rakhna simpler hai.
+#
+# session_id (R-42) diya jaaye to digits seedha voice session FSM me
+# feed hote hain:
+#   - CAPTURING_SERVICE_NUMBER/CONFIRMING_SERVICE_NUMBER: '#' pressed
+#     hone par accumulated digits validate hote hain (REST
+#     /service-number jaisa hi retry/fallback logic, bas STT ki jagah
+#     seedha digits — isliye validate_service_number()'s LLM-based
+#     extract_service_number() yahan skip karte hain, keypad input
+#     already unambiguous hai).
+#   - ASK_ANOTHER_COMPLAINT: '1'/'2' single keypress se turant yes/no
+#     (real IVR menu jaisa, '#' ka wait nahi karta).
+# session_id na diya jaye to sirf raw digit events milte hain, koi FSM
+# side-effect nahi (backward compatible standalone mode).
+# =====================================================================
+
+def _validate_dtmf_service_number(digits: str):
+    """
+    Lightweight 5-digit check for DTMF-entered service numbers.
+    Deliberately does NOT call validate_service_number() — that
+    function's extract_service_number() invokes an LLM to clean up
+    noisy STT transcripts, which keypad digits don't need (they're
+    already unambiguous).
+
+    Returns (is_valid, normalised, error_reason).
+    """
+    if re.match(r"^[0-9]{5}$", digits):
+        return True, digits, None
+    return False, digits, f"Expected exactly 5 digits, got '{digits}' ({len(digits)} digits)."
+
+
+async def _handle_dtmf_service_number(websocket: WebSocket, session_id: str, digits: str) -> None:
+    """Mirrors the REST /service-number validate+retry/fallback flow, for DTMF entry."""
+    is_valid, normalised, error_reason = _validate_dtmf_service_number(digits)
+
+    try:
+        if is_valid:
+            session_manager.transition(
+                session_id,
+                SessionState.CONFIRMING_SERVICE_NUMBER,
+                service_no=normalised,
+            )
+            await websocket.send_json({
+                "event": "service_number_captured",
+                "state": SessionState.CONFIRMING_SERVICE_NUMBER.value,
+                "normalised_service_no": normalised,
+                "prompt_text": render_dynamic_prompt("confirm_service_number", service_number=normalised),
+            })
+            return
+
+        retries = session_manager.increment_svc_retries(session_id)
+        if session_manager.should_fallback(session_id):
+            session_manager.transition(session_id, SessionState.OPERATOR_FALLBACK)
+            await websocket.send_json({
+                "event": "service_number_fallback",
+                "state": SessionState.OPERATOR_FALLBACK.value,
+                "retries_count": retries,
+                "max_retries": MAX_SERVICE_NUMBER_RETRIES,
+                "prompt_text": get_prompt_text("fallback_operator"),
+                "error_reason": error_reason,
+            })
+            return
+
+        await websocket.send_json({
+            "event": "service_number_invalid",
+            "state": SessionState.CAPTURING_SERVICE_NUMBER.value,
+            "retries_count": retries,
+            "max_retries": MAX_SERVICE_NUMBER_RETRIES,
+            "prompt_text": render_dynamic_prompt(
+                "retry_service_number", attempt=retries, max_attempts=MAX_SERVICE_NUMBER_RETRIES,
+            ),
+            "error_reason": error_reason,
+        })
+    except ValueError as exc:
+        # Session expired / invalid transition between the state check
+        # in the caller and here — report, don't crash the WS loop.
+        await websocket.send_json({"event": "error", "detail": str(exc)})
+
+
+async def _handle_dtmf_another_complaint(websocket: WebSocket, session_id: str, digit: str) -> None:
+    """'1' = yes (loop back for another complaint), '2' = no (end call)."""
+    try:
+        if digit == "1":
+            session_manager.transition(
+                session_id,
+                SessionState.CAPTURING_SERVICE_NUMBER,
+                svc_retries=0,   # fresh retry budget for the next complaint
+            )
+            await websocket.send_json({
+                "event": "another_complaint_answered",
+                "wants_another": True,
+                "state": SessionState.CAPTURING_SERVICE_NUMBER.value,
+                "prompt_text": get_prompt_text("ask_service_number"),
+            })
+        else:
+            session_manager.transition(session_id, SessionState.COMPLETED)
+            await websocket.send_json({
+                "event": "another_complaint_answered",
+                "wants_another": False,
+                "state": SessionState.COMPLETED.value,
+                "prompt_text": get_prompt_text("goodbye"),
+            })
+    except ValueError as exc:
+        await websocket.send_json({"event": "error", "detail": str(exc)})
+
+
+@router.websocket("/ws/dtmf-stream")
+async def voice_dtmf_stream(websocket: WebSocket, session_id: Optional[str] = Query(default=None)):
+    """
+    Real-time WebSocket jo continuously raw PCM chunks receive karta hai
+    aur Goertzel-based DTMF detector se key-press digits nikaal ke
+    client ko bhejta hai. '#' se sequence complete hoti hai, '*' se
+    clear hoti hai (standard IVR convention).
+    """
+    await websocket.accept()
+
+    if session_id is not None and session_manager.get_session(session_id) is None:
+        await websocket.send_json({"event": "error", "detail": "Voice session not found or expired."})
+        await websocket.close()
+        return
+
+    block_buffer = DTMFBlockBuffer()
+    detector = StreamingDTMFDetector()
+    sequence = ""
+
+    try:
+        await websocket.send_json({"event": "listening"})
+        logger.info("DTMF WebSocket connected (session_id=%s)", session_id)
+
+        while True:
+            chunk = await websocket.receive_bytes()
+            blocks = block_buffer.add_chunk(chunk)
+
+            for block in blocks:
+                digit = detector.process_block(block)
+                if digit is None:
+                    continue
+
+                session = session_manager.get_session(session_id) if session_id else None
+
+                # ASK_ANOTHER_COMPLAINT is a single-keypress menu — no '#' needed
+                if session is not None and session.state == SessionState.ASK_ANOTHER_COMPLAINT and digit in ("1", "2"):
+                    await _handle_dtmf_another_complaint(websocket, session_id, digit)
+                    continue
+
+                if digit == "#":
+                    completed_sequence = sequence
+                    sequence = ""
+                    await websocket.send_json({"event": "sequence_complete", "sequence": completed_sequence})
+                    if session is not None and session.state in (
+                        SessionState.CAPTURING_SERVICE_NUMBER,
+                        SessionState.CONFIRMING_SERVICE_NUMBER,
+                    ):
+                        await _handle_dtmf_service_number(websocket, session_id, completed_sequence)
+                elif digit == "*":
+                    sequence = ""
+                    await websocket.send_json({"event": "sequence_cleared"})
+                else:
+                    sequence += digit
+                    await websocket.send_json({"event": "digit", "digit": digit, "sequence": sequence})
+
+    except WebSocketDisconnect:
+        logger.info("DTMF WebSocket disconnected normally (session_id=%s).", session_id)
+    except Exception as exc:
+        logger.error("DTMF WebSocket error: %s", exc, exc_info=True)
         try:
             await websocket.send_json({"event": "error", "detail": str(exc)})
         except Exception:

@@ -32,7 +32,6 @@ from models import (
 from schemas import (
     IntakeRequest,
     IntakeResponse,
-    ReanalyzeRequest,
     CandidateApp,
     DuplicateInfo,
     TicketConfirmRequest,
@@ -57,6 +56,12 @@ from services.classifier import TicketClassifier
 from services.search import ApplicationSearchEngine
 from services.dependencies import ApplicationDependencyEngine
 from services.llm_client import verify_and_correct_text
+
+import logging
+from voice.session import session_manager
+from voice.prompts import get_prompt_text
+
+logger = logging.getLogger("routers.tickets")
 
 # Initialize the global instances so they don't load models on every request
 embedder = TextEmbedder()
@@ -145,71 +150,132 @@ def create_intake(
     session.refresh(intake)
 
     # -----------------------------------------------------------------
-    # 1c. AI PIPELINE — Call Shared Logic
+    # 1c. AI PIPELINE — Call Team B's functions
     # -----------------------------------------------------------------
-    from services.pipeline import run_ai_pipeline
-    fault_type, severity, raw_candidates, potential_duplicates, is_repeat = run_ai_pipeline(
-        session=session,
-        complaint_text=complaint_text,
-        complainant_service_no=request.complainant_service_no,
-    )
 
-    candidates = [CandidateApp(**c) for c in raw_candidates]
-    dupes = [DuplicateInfo(**d) for d in potential_duplicates]
+    # Step 1: Generate embedding vector from corrected complaint text
+    embedding = embedder.get_embedding(complaint_text)
 
-    return IntakeResponse(
-        intake_id=intake.id,
-        corrected_text=complaint_text,
-        is_repeat_caller=is_repeat,
-        potential_duplicates=dupes,
-        fault_type_proposal=fault_type,
-        severity_proposal=severity,
-        candidates=candidates,
-    )
+    # -----------------------------------------------------------------
+    # 1c. SEMANTIC DUPLICATE & MASS OUTAGE CHECK
+    # -----------------------------------------------------------------
+    embedding_str = "[" + ",".join(map(str, embedding)) + "]"
+    
+    # Only look at tickets created in the last 4 hours to prevent stale alerts
+    time_limit = dt_lib.datetime.now(timezone.utc) - timedelta(hours=4)
+    
+    duplicate_query = text("""
+        SELECT t.ticket_number, t.complainant_service_no, l.raw_text, t.status, (l.text_embedding <=> :embedding) AS distance
+        FROM tickets t
+        JOIN learning_examples l ON t.ticket_number = l.ticket_number
+        WHERE t.status != 'resolved' 
+          AND t.created_at >= :time_limit
+          AND (l.text_embedding <=> :embedding) < 0.20
+        ORDER BY distance ASC
+        LIMIT 5
+    """)
+    dupes = session.execute(duplicate_query, {
+        "embedding": embedding_str, 
+        "time_limit": time_limit
+    }).fetchall()
+    
+    potential_duplicates = []
+    is_repeat = False
+    
+    for row in dupes:
+        is_same = (row.complainant_service_no == request.complainant_service_no)
+        dist = float(row.distance)
+        
+        # Dual thresholds: Looser for same user (0.20) to catch repeat complaints,
+        # Tighter for different user (0.10) to prevent false-positive mass outages.
+        if is_same and dist < 0.20:
+            is_repeat = True
+            
+        if (is_same and dist < 0.20) or (not is_same and dist < 0.10):
+            snippet = row.raw_text[:80] + "..." if len(row.raw_text) > 80 else row.raw_text
+            potential_duplicates.append({
+                "ticket_number": row.ticket_number,
+                "complainant_service_no": row.complainant_service_no,
+                "text_snippet": snippet,
+                "status": row.status,
+                "is_same_user": is_same
+            })
 
+    # Step 2: Classify fault type and severity using Hybrid Strategy
+    fault_type = classifier.classify_fault_type(session, complaint_text, embedding)
+    severity = classifier.classify_severity(session, complaint_text, embedding)
 
-@router.post("/intakes/{intake_id}/reanalyze", response_model=IntakeResponse)
-def reanalyze_intake(
-    intake_id: int,
-    request: ReanalyzeRequest,
-    session: Session = Depends(get_session),
-    current_user: CurrentUser = Depends(require_operator),
-):
-    """
-    Reruns the AI classification pipeline without creating a new intake.
-    Useful when the operator edits the complaint text.
-    """
-    intake = session.get(Intake, intake_id)
-    if not intake:
-        raise HTTPException(status_code=404, detail="Intake not found")
+    # Step 3: Find candidate applications via vector similarity search
+    raw_candidates = search_engine.search_candidates(session, embedding)
+    
+    enriched_candidates = []
+    for cand in raw_candidates:
+        app_obj = session.get(Application, cand["application_id"])
+        if app_obj:
+            enriched_candidates.append({
+                "application_id": app_obj.id,
+                "application_name": app_obj.name,
+                "confidence_score": cand["score"]
+            })
 
-    guardrail_result = verify_and_correct_text(request.raw_text)
-    if guardrail_result["status"] == "rejected":
-        raise HTTPException(
-            status_code=400,
-            detail=guardrail_result.get("reason", "Complaint was rejected by the guardrail.")
+    # Step 4: Expand dependencies based on fault type (R-10)
+    primary_candidate = enriched_candidates[0] if enriched_candidates else None
+    expanded_deps = []
+    if primary_candidate:
+        dep_ids = dependency_engine.expand_dependencies(
+            db_session=session,
+            primary_app_id=primary_candidate["application_id"],
+            fault_type=fault_type,
         )
-    complaint_text = guardrail_result.get("corrected_text", request.raw_text)
+        for d_id in dep_ids:
+            d_app = session.get(Application, d_id)
+            if d_app:
+                expanded_deps.append({
+                    "application_id": d_id,
+                    "application_name": d_app.name,
+                    "expansion_reason": f"Cascade from {fault_type}"
+                })
 
-    from services.pipeline import run_ai_pipeline
-    fault_type, severity, raw_candidates, potential_duplicates, is_repeat = run_ai_pipeline(
-        session=session,
-        complaint_text=complaint_text,
-        complainant_service_no=intake.complainant_service_no,
-    )
+    # -----------------------------------------------------------------
+    # 1d. BUILD THE RESPONSE — Merge candidates + expansions
+    # -----------------------------------------------------------------
+    candidates: list[CandidateApp] = []
 
-    candidates = [CandidateApp(**c) for c in raw_candidates]
-    dupes = [DuplicateInfo(**d) for d in potential_duplicates]
+    # Add direct candidates from vector search
+    for i, cand in enumerate(enriched_candidates):
+        candidates.append(
+            CandidateApp(
+                application_id=cand["application_id"],
+                application_name=cand["application_name"],
+                confidence_score=round(cand["confidence_score"], 4),
+                is_primary=(i == 0),  # Top result is marked as primary
+            )
+        )
+
+    # Add dependency-expanded candidates (avoid duplicates)
+    existing_app_ids = {c.application_id for c in candidates}
+    for dep in expanded_deps:
+        if dep["application_id"] not in existing_app_ids:
+            candidates.append(
+                CandidateApp(
+                    application_id=dep["application_id"],
+                    application_name=dep["application_name"],
+                    confidence_score=0.0,  # Expansion — no direct score
+                    is_primary=False,
+                    expansion_reason=dep.get("expansion_reason"),
+                )
+            )
 
     return IntakeResponse(
         intake_id=intake.id,
         corrected_text=complaint_text,
         is_repeat_caller=is_repeat,
-        potential_duplicates=dupes,
+        potential_duplicates=potential_duplicates,
         fault_type_proposal=fault_type,
         severity_proposal=severity,
         candidates=candidates,
     )
+
 
 # =====================================================================
 # 2. POST /api/tickets/confirm — Create ticket from confirmed proposal
@@ -243,10 +309,16 @@ def confirm_ticket(
             detail=f"Invalid severity: '{request.confirmed_severity}'. Must be one of {VALID_SEVERITIES}",
         )
 
-    # Look up the confirmed application
-    app = session.get(Application, request.confirmed_app_id)
-    if not app:
-        raise HTTPException(status_code=404, detail=f"Application ID {request.confirmed_app_id} not found.")
+    # Look up the confirmed application. None means the operator rejected
+    # every candidate (R-17) — route to triage instead of forcing a
+    # wrong label; a captured miss is useful research data.
+    app = None
+    if request.confirmed_app_id is not None:
+        app = session.get(Application, request.confirmed_app_id)
+        if not app:
+            raise HTTPException(status_code=404, detail=f"Application ID {request.confirmed_app_id} not found.")
+
+    ticket_status = "open" if app else "triage"
 
     # Look up the intake record
     intake = session.get(Intake, request.intake_id)
@@ -265,7 +337,7 @@ def confirm_ticket(
         ticket_number=ticket_number,
         intake_id=intake.id,
         primary_application_id=request.confirmed_app_id,
-        status="open",
+        status=ticket_status,
         fault_type=request.confirmed_fault_type,
         severity=request.confirmed_severity,
         complainant_service_no=intake.complainant_service_no,
@@ -316,34 +388,58 @@ def confirm_ticket(
 
     # -----------------------------------------------------------------
     # R-16: Route to the owning team (stored in response for frontend)
+    # No application confirmed -> no team to route to, stays in triage.
     # -----------------------------------------------------------------
-    routed_to = app.owning_team
+    routed_to = app.owning_team if app else "Unassigned"
 
     # -----------------------------------------------------------------
     # Log initial ticket history entry
     # -----------------------------------------------------------------
+    base_note = f"Ticket created. Routed to {routed_to}." if app else \
+        "Ticket created. No matching application — sent to triage."
     history = TicketHistory(
         ticket_number=ticket_number,
         changed_by="system",
         old_status="",
-        new_status="open",
-        notes=f"Ticket created. Routed to {routed_to}. "
-              f"Operator notes: {request.operator_notes}" if request.operator_notes else
-              f"Ticket created. Routed to {routed_to}.",
+        new_status=ticket_status,
+        notes=f"{base_note} Operator notes: {request.operator_notes}" if request.operator_notes else base_note,
     )
     session.add(history)
 
     # Commit everything in one transaction
     session.commit()
 
+    # R-42: if this ticket came from a voice call, advance the call's FSM
+    # so the caller can be asked about another complaint. Best-effort —
+    # the ticket itself is already committed, so a missing/expired voice
+    # session must never fail this response.
+    voice_next_state = None
+    voice_prompt_text = None
+    if request.voice_session_id:
+        try:
+            session_manager.complete_ticket_and_ask_again(
+                request.voice_session_id, ticket_number,
+            )
+            voice_next_state = "ASK_ANOTHER_COMPLAINT"
+            voice_prompt_text = get_prompt_text("ask_another_complaint")
+        except ValueError as exc:
+            logger.warning(
+                "Could not advance voice session %s to ASK_ANOTHER_COMPLAINT: %s",
+                request.voice_session_id, exc,
+            )
+
     return TicketConfirmResponse(
         ticket_number=ticket_number,
-        status="open",
-        primary_application_name=app.name,
+        status=ticket_status,
+        primary_application_name=app.name if app else "Unclassified",
         fault_type=request.confirmed_fault_type,
         severity=request.confirmed_severity,
         routed_to_team=routed_to,
-        message=f"Ticket {ticket_number} created and routed to {routed_to}.",
+        message=f"Ticket {ticket_number} created and routed to {routed_to}." if app else
+                f"Ticket {ticket_number} created and sent to triage (no matching application).",
+        voice_session_id=request.voice_session_id if voice_next_state else None,
+        voice_next_state=voice_next_state,
+        voice_prompt_text=voice_prompt_text,
     )
 
 

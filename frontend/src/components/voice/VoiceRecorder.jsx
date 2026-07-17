@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import toast from "react-hot-toast";
 
 function VoiceRecorder({ onRecordingComplete, onRecordingStart, isProcessing = false }) {
   const [isRecording, setIsRecording] = useState(false);
@@ -88,7 +89,7 @@ function VoiceRecorder({ onRecordingComplete, onRecordingStart, isProcessing = f
       setStatus("Listening for speech...");
       startSilenceDetection(stream);
       setTimeout(() => { if (isRecordingRef.current) stopRecording(); }, 30000);
-    } catch (err) { console.error("Mic error:", err); alert("Microphone access denied."); }
+    } catch (err) { console.error("Mic error:", err); toast.error("Microphone access denied."); }
   }, [onRecordingStart, onRecordingComplete, stopRecording, startSilenceDetection]);
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { confirmTicket, confirmMultiTicket, reanalyzeIntake } from '../api/tickets.api';
+import { confirmTicket, confirmMultiTicket } from '../api/tickets.api';
 import { fetchAudioBlob } from '../api/voice.api';
 import { FAULT_TYPES, SEVERITY_LEVELS, SEVERITY_COLOR } from '../constants/enums';
 import ErrorMessage from '../components/ui/ErrorMessage';
@@ -30,16 +30,17 @@ function TicketBlock({ index, ticket, candidates, onUpdate, onRemove, canRemove 
       <div style={{ marginBottom: '10px' }}>
         <div style={cardTitle}>Primary Application</div>
         {candidates.map(c => (
-          <div key={c.application_id} onClick={() => set('selectedAppId', c.application_id)}
+          <div key={c.application_id} onClick={() => onUpdate(index, { ...ticket, selectedAppId: c.application_id, noMatch: false })}
             style={{
               display: 'flex', alignItems: 'center', gap: '12px',
               padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', marginBottom: '4px',
-              border: ticket.selectedAppId === c.application_id ? '1.5px solid var(--accent)' : '1px solid var(--border)',
-              background: ticket.selectedAppId === c.application_id ? 'rgba(24,95,165,0.12)' : 'var(--surface-1)',
+              border: !ticket.noMatch && ticket.selectedAppId === c.application_id ? '1.5px solid var(--accent)' : '1px solid var(--border)',
+              background: !ticket.noMatch && ticket.selectedAppId === c.application_id ? 'rgba(24,95,165,0.12)' : 'var(--surface-1)',
+              opacity: ticket.noMatch ? 0.5 : 1,
             }}>
-            <input type="radio" readOnly checked={ticket.selectedAppId === c.application_id} style={{ accentColor: 'var(--accent)' }} />
+            <input type="radio" readOnly checked={!ticket.noMatch && ticket.selectedAppId === c.application_id} style={{ accentColor: 'var(--accent)' }} />
             <span style={{ fontSize: '13px', flex: 1, color: 'var(--text-primary)' }}>{c.application_name}</span>
-            {ticket.selectedAppId !== c.application_id && (
+            {!ticket.noMatch && ticket.selectedAppId !== c.application_id && (
               <label style={{ fontSize: '11px', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                 onClick={e => { e.stopPropagation(); toggleRelated(c.application_id); }}>
                 <input type="checkbox" checked={ticket.relatedAppIds.includes(c.application_id)} readOnly /> related
@@ -47,6 +48,20 @@ function TicketBlock({ index, ticket, candidates, onUpdate, onRemove, canRemove 
             )}
           </div>
         ))}
+
+        {/* R-17: unclassified path — abstain rather than force a wrong label */}
+        <div onClick={() => set('noMatch', true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '12px',
+            padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', marginTop: '2px',
+            border: ticket.noMatch ? '1.5px solid var(--warning)' : '1px dashed var(--border)',
+            background: ticket.noMatch ? 'rgba(245,158,11,0.1)' : 'transparent',
+          }}>
+          <input type="radio" readOnly checked={!!ticket.noMatch} style={{ accentColor: 'var(--warning)' }} />
+          <span style={{ fontSize: '13px', color: ticket.noMatch ? 'var(--warning)' : 'var(--text-muted)' }}>
+            None of these match — send to triage
+          </span>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -79,35 +94,13 @@ function ClassifyReview() {
   const { state } = useLocation();
   const navigate  = useNavigate();
 
-  const { intakeResponse, originalForm, ttsUrl } = state || {};
+  if (!state?.intakeResponse) { navigate('/submit'); return null; }
 
-  // ── All hooks MUST run unconditionally (Rules of Hooks) ──────────────────
-  const [intakeResp, setIntakeResp] = useState(intakeResponse || {});
-  const [editedComplaint, setEditedComplaint] = useState(originalForm?.raw_text || '');
-  const [reanalyzing, setReanalyzing] = useState(false);
-  const [newSuggestions, setNewSuggestions] = useState(false);
+  const { intakeResponse, originalForm, ttsUrl } = state;
+  const { candidates, fault_type_proposal, severity_proposal, is_repeat_caller, potential_duplicates, intake_id } = intakeResponse;
+
+  const [editedComplaint, setEditedComplaint] = useState(originalForm.raw_text);
   const audioRef = useRef(null);
-
-  const { candidates: rawCandidates, fault_type_proposal, severity_proposal, is_repeat_caller, potential_duplicates, intake_id } = intakeResp;
-  const candidates = rawCandidates || [];
-
-  const defaultTicket = () => ({
-    selectedAppId: candidates.find(c => c.is_primary)?.application_id ?? candidates[0]?.application_id ?? null,
-    relatedAppIds: candidates.filter(c => !c.is_primary).map(c => c.application_id),
-    faultType: fault_type_proposal || 'other',
-    severity: severity_proposal || 'normal',
-    notes: '',
-    noMatch: false,
-  });
-
-  const [tickets,  setTickets]  = useState(() => [defaultTicket()]);
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState(null);
-
-  // Redirect if there's no intake data (e.g. navigated here directly)
-  useEffect(() => {
-    if (!intakeResponse) navigate('/submit', { replace: true });
-  }, [intakeResponse, navigate]);
 
   useEffect(() => {
     let isMounted = true;
@@ -134,11 +127,21 @@ function ClassifyReview() {
     };
   }, [ttsUrl]);
 
-  // Guard: render nothing while redirecting
-  if (!intakeResponse) return null;
-
   const sameUserDupes = (potential_duplicates || []).filter(d => d.is_same_user);
   const diffUserDupes = (potential_duplicates || []).filter(d => !d.is_same_user);
+
+  const defaultTicket = () => ({
+    selectedAppId: candidates.find(c => c.is_primary)?.application_id ?? candidates[0]?.application_id ?? null,
+    relatedAppIds: candidates.filter(c => !c.is_primary).map(c => c.application_id),
+    faultType: fault_type_proposal,
+    severity: severity_proposal,
+    notes: '',
+    noMatch: false,
+  });
+
+  const [tickets,  setTickets]  = useState([defaultTicket()]);
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState(null);
 
   function updateTicket(idx, updated) {
     setTickets(prev => prev.map((t, i) => i === idx ? updated : t));
@@ -148,24 +151,6 @@ function ClassifyReview() {
   }
   function removeTicket(idx) {
     setTickets(prev => prev.filter((_, i) => i !== idx));
-  }
-
-  async function handleReanalyze() {
-    setReanalyzing(true); setError(null);
-    try {
-      const res = await reanalyzeIntake(intake_id, { raw_text: editedComplaint });
-      setIntakeResp(res.data);
-      setNewSuggestions(true);
-    } catch (e) {
-      setError(e.response?.data?.detail || e.message || 'Re-analyze failed');
-    } finally {
-      setReanalyzing(false);
-    }
-  }
-
-  function applySuggestions() {
-    setTickets([defaultTicket()]);
-    setNewSuggestions(false);
   }
 
   async function handleConfirm() {
@@ -179,16 +164,37 @@ function ClassifyReview() {
           intake_id,
           confirmed_app_id:     t.noMatch ? null : t.selectedAppId,
           related_app_ids:      t.noMatch ? [] : t.relatedAppIds,
-          confirmed_fault_type: t.noMatch ? 'other' : t.faultType,
-          confirmed_severity:   t.noMatch ? 'normal' : t.severity,
+          // R-17: fault type/severity are kept even when no application
+          // matches — the operator may know "the system is down" without
+          // knowing which system. Only the application gets nulled out.
+          confirmed_fault_type: t.faultType,
+          confirmed_severity:   t.severity,
           operator_notes:       t.notes || '',
           predicted_app_id:     predictedAppId,
           predicted_fault_type: fault_type_proposal,
           predicted_severity:   severity_proposal,
           edited_raw_text:      editedComplaint,
+          voice_session_id:     originalForm.voice_session_id || undefined,
         };
         const res = await confirmTicket(payload);
-        navigate('/tickets', { state: { newTicket: res.data } });
+
+        // R-42: this ticket came from a voice call that still wants to
+        // ask "koi aur complaint hai?" — loop back into the voice panel
+        // instead of going to the tickets list.
+        if (res.data.voice_next_state === 'ASK_ANOTHER_COMPLAINT') {
+          navigate('/submit', {
+            state: {
+              resumeVoiceSession: {
+                session_id: res.data.voice_session_id,
+                state: res.data.voice_next_state,
+                promptText: res.data.voice_prompt_text,
+                lastTicketNumber: res.data.ticket_number,
+              },
+            },
+          });
+        } else {
+          navigate('/tickets', { state: { newTicket: res.data } });
+        }
       } else {
         const payload = {
           intake_id,
@@ -244,20 +250,7 @@ function ClassifyReview() {
       {error && <ErrorMessage message={error} />}
 
       <div style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-          <div style={{ ...cardTitle, marginBottom: 0, fontWeight: 500, fontSize: '13px', color: 'var(--text-primary)' }}>Original Complaint</div>
-          <button 
-            onClick={handleReanalyze} 
-            disabled={editedComplaint === (intakeResp.corrected_text || originalForm.raw_text) || reanalyzing}
-            style={{ 
-              background: 'transparent', color: 'var(--accent)', border: '1px solid var(--accent)', 
-              borderRadius: '6px', padding: '4px 10px', fontSize: '12px', cursor: (editedComplaint === (intakeResp.corrected_text || originalForm.raw_text) || reanalyzing) ? 'not-allowed' : 'pointer',
-              opacity: (editedComplaint === (intakeResp.corrected_text || originalForm.raw_text) || reanalyzing) ? 0.5 : 1
-            }}
-          >
-            {reanalyzing ? '↻ Re-analyzing...' : '↻ Re-analyze Complaint'}
-          </button>
-        </div>
+        <div style={cardTitle}>Original Complaint</div>
         <textarea
           value={editedComplaint}
           onChange={(e) => setEditedComplaint(e.target.value)}
@@ -271,24 +264,14 @@ function ClassifyReview() {
 
       <div style={card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <div style={cardTitle} style={{ marginBottom: 0, fontWeight: 500, fontSize: '13px', color: 'var(--text-primary)' }}>
+          <div style={cardTitle}>
             {tickets.length === 1 ? 'Confirm Ticket' : `Create ${tickets.length} Tickets from this Intake`}
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            {newSuggestions && (
-              <button 
-                onClick={applySuggestions}
-                style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', cursor: 'pointer' }}
-              >
-                Apply New AI Suggestions
-              </button>
-            )}
-            {tickets.length > 1 && (
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'var(--surface-2)', padding: '3px 8px', borderRadius: '6px' }}>
-                R-14a: Multi-fault
-              </span>
-            )}
-          </div>
+          {tickets.length > 1 && (
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'var(--surface-2)', padding: '3px 8px', borderRadius: '6px' }}>
+              R-14a: Multi-fault
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {tickets.map((t, i) => (

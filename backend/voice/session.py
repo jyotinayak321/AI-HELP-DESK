@@ -44,6 +44,7 @@ class SessionState(str, Enum):
     OPERATOR_REVIEW            = "OPERATOR_REVIEW"
     OPERATOR_FALLBACK          = "OPERATOR_FALLBACK"
     TICKET_CREATED             = "TICKET_CREATED"
+    ASK_ANOTHER_COMPLAINT      = "ASK_ANOTHER_COMPLAINT"
     COMPLETED                  = "COMPLETED"
     ERROR                      = "ERROR"
 
@@ -53,6 +54,23 @@ MAX_SERVICE_NUMBER_RETRIES = 3
 
 # Session TTL in seconds (30 minutes)
 SESSION_TTL_SECONDS = 1800
+
+
+@dataclass
+class CompletedTicket:
+    """
+    Snapshot of one complaint-to-ticket cycle within a call (R-42:
+    one call = one session = one-or-more tickets). Archived onto
+    VoiceSessionData.tickets when the operator confirms a ticket,
+    so the in-progress fields can be cleared for the next complaint
+    in the same call.
+    """
+    ticket_number: str
+    service_no: Optional[str] = None
+    complaint_text: Optional[str] = None
+    intake_id: Optional[int] = None
+    fault_type_proposal: Optional[str] = None
+    severity_proposal: Optional[str] = None
 
 
 @dataclass
@@ -82,11 +100,12 @@ class VoiceSessionData:
     fault_type_proposal: Optional[str] = None
     severity_proposal: Optional[str] = None
     candidates: List[Dict[str, Any]] = field(default_factory=list)
-    potential_duplicates: List[Dict[str, Any]] = field(default_factory=list)
-    is_repeat_caller: bool = False
 
-    # Final ticket
+    # Final ticket (current complaint in progress)
     ticket_number: Optional[str] = None
+
+    # Tickets already created earlier in this same call (R-42)
+    tickets: List[CompletedTicket] = field(default_factory=list)
 
     # Logging / metrics
     stt_latency_ms: float = 0.0
@@ -190,6 +209,49 @@ class VoiceSessionManager:
         )
         return session.svc_retries
 
+    def complete_ticket_and_ask_again(
+        self,
+        session_id: str,
+        ticket_number: str,
+    ) -> VoiceSessionData:
+        """
+        Archive the just-created ticket (R-42) and move the session into
+        ASK_ANOTHER_COMPLAINT so the caller can report a further fault
+        in the same call, or end it.
+
+        Snapshots the current in-progress complaint fields onto
+        session.tickets, then clears them so the next loop (if any)
+        starts clean.
+        """
+        session = self.get_session(session_id)
+        if session is None:
+            raise ValueError(f"Session not found or expired: {session_id}")
+
+        self.transition(session_id, SessionState.TICKET_CREATED, ticket_number=ticket_number)
+
+        session.tickets.append(
+            CompletedTicket(
+                ticket_number=ticket_number,
+                service_no=session.service_no,
+                complaint_text=session.complaint_text,
+                intake_id=session.intake_id,
+                fault_type_proposal=session.fault_type_proposal,
+                severity_proposal=session.severity_proposal,
+            )
+        )
+
+        self.transition(
+            session_id,
+            SessionState.ASK_ANOTHER_COMPLAINT,
+            complaint_text=None,
+            intake_id=None,
+            fault_type_proposal=None,
+            severity_proposal=None,
+            candidates=[],
+            ticket_number=None,
+        )
+        return session
+
     def should_fallback(self, session_id: str) -> bool:
         """Check if retries have exceeded the maximum threshold."""
         session = self.get_session(session_id)
@@ -256,7 +318,12 @@ class VoiceSessionManager:
                 SessionState.ERROR,
             },
             SessionState.TICKET_CREATED: {
-                SessionState.COMPLETED,
+                SessionState.ASK_ANOTHER_COMPLAINT,
+                SessionState.ERROR,
+            },
+            SessionState.ASK_ANOTHER_COMPLAINT: {
+                SessionState.CAPTURING_SERVICE_NUMBER,    # Yes → re-confirm service number, loop
+                SessionState.COMPLETED,                   # No → call ends
                 SessionState.ERROR,
             },
             SessionState.COMPLETED: set(),                # Terminal state
@@ -280,3 +347,10 @@ class VoiceSessionManager:
             del self._sessions[sid]
         if expired:
             logger.info("Cleaned up %d expired sessions", len(expired))
+
+
+# Shared singleton — imported by routers/voice.py (session lifecycle) and
+# routers/tickets.py (to mark TICKET_CREATED when a ticket is confirmed
+# for a voice session, R-42). Lives here rather than in a router so
+# neither router has to import from the other.
+session_manager = VoiceSessionManager()

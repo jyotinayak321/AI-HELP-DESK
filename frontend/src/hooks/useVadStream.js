@@ -18,8 +18,7 @@ export function useVadStream({ onSpeechStarted, onEndOfSpeech, onTimeout } = {})
   const startVadMonitoring = useCallback(async (stream) => {
     try {
       // 1. WebSocket connect karo
-      const wsUrl = import.meta.env.VITE_WS_URL || 'ws://192.168.1.34:8001/api/voice/ws/vad-stream';
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket('ws://127.0.0.1:8001/api/voice/ws/vad-stream');
       wsRef.current = ws;
 
       await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; setTimeout(() => reject(new Error('timeout')), 5000); });

@@ -331,7 +331,7 @@ def predict_fault_and_severity(complaint_text: str) -> dict:
 
         # Simple keyword matching to make the mock somewhat realistic
         fault_type = "other"
-        if any(w in text_lower for w in ["login", "log in", "password", "access", "sso", "lock", "otp"]):
+        if any(w in text_lower for w in ["login", "password", "access", "sso", "lock", "otp"]):
             fault_type = "login/access"
         elif any(w in text_lower for w in ["slow", "hang", "timeout", "loading", "lagging"]):
             fault_type = "performance/slow"

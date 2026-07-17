@@ -4,7 +4,7 @@ from functools import lru_cache
 class Settings(BaseSettings):
 
     # -- Database ----------------------------
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5433/helpdesk_db"
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/helpdesk_db"
 
     # -- Server ------------------------------
     HOST: str = "0.0.0.0"
@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # Set to True to enforce JWT tokens on all routes.
     # Keep False during development if Keycloak is not running.
     AUTH_ENABLED: bool = True
-    KEYCLOAK_URL: str = "http://192.168.1.34:8080"
+    KEYCLOAK_URL: str = "http://localhost:8080"
     KEYCLOAK_REALM: str = "ai-helpdesk"
     KEYCLOAK_CLIENT_ID: str = "helpdesk-frontend"
 
@@ -36,11 +36,11 @@ class Settings(BaseSettings):
     STT_MODEL_SIZE: str = "medium"
     STT_DEVICE: str = "auto"          # "auto", "cuda", "cpu"
     STT_COMPUTE_TYPE: str = "default" # "default", "float16", "int8", "float32"
-    STT_KEEP_MODEL_LOADED: bool = True    #True  = keep in memory (offline GPU PC, faster response)
+    STT_KEEP_MODEL_LOADED: bool = False    #True  = keep in memory (offline GPU PC, faster response)
     
     
     # VAD (Voice Activity Detection) — Silero VAD
-    VAD_DEVICE: str = "cuda"           # ✅ NEW: "cpu" on home PC, "cuda" on offline GPU PC
+    VAD_DEVICE: str = "cpu"           # ✅ NEW: "cpu" on home PC, "cuda" on offline GPU PC
 
 
     
@@ -51,18 +51,19 @@ class Settings(BaseSettings):
     VOICE_SESSION_TTL: int = 1800      # seconds (30 min default)
     VOICE_MAX_SVC_RETRIES: int = 3
 
-    # -- Phase 4: LiveKit Media Transport (Q3: runtime backend flag) -
-    # Set LIVEKIT_ENABLED=true to activate WebRTC media transport.
-    # When false, the existing WebSocket/REST audio path remains active.
-    # The frontend reads this flag from the session/start response and
-    # decides whether to join a LiveKit room or use the legacy path.
-    LIVEKIT_ENABLED: bool = True
-    LIVEKIT_URL: str = "ws://192.168.1.34:7880"
+    # -- Phase 4: LiveKit Media Transport (runtime backend flag) -----
+    # Set LIVEKIT_ENABLED=true to activate real-time WebRTC media transport.
+    # When false (default), the existing record/upload REST audio path
+    # remains the only path. The frontend reads this flag from the
+    # /voice/start response (no build-time env var) and decides whether
+    # to join a LiveKit room or use the legacy path.
+    LIVEKIT_ENABLED: bool = False
+    LIVEKIT_URL: str = "ws://localhost:7880"
     LIVEKIT_API_KEY: str = "helpdesk_key"
     LIVEKIT_API_SECRET: str = "helpdesk_secret_change_in_production"
     # Identity used by the AI agent when joining a room as a participant.
     LIVEKIT_AGENT_IDENTITY: str = "ai-helpdesk-agent"
-    # (Q1) STT concurrency: single lock protects the shared SpeechToTextEngine.
+    # STT concurrency: single lock protects the shared SpeechToTextEngine.
     # Future: increase to allow a pool when concurrency becomes a bottleneck.
     LIVEKIT_STT_POOL_SIZE: int = 1
 

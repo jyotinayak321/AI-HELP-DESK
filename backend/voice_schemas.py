@@ -29,26 +29,13 @@ class VoiceStartResponse(BaseModel):
         description="Whether a pre-recorded audio file is available for this prompt.",
     )
 
-    # ── Phase 4: LiveKit fields (Q2 + Q3) ────────────────────────────────────
-    # Populated only when LIVEKIT_ENABLED=True on the backend.
-    # Frontend reads livekit_enabled to decide whether to join a LiveKit room
-    # (Q3: runtime backend flag — no build-time VITE_ env var needed).
-    livekit_enabled: bool = Field(
-        default=False,
-        description="True when the backend has LiveKit transport enabled.",
-    )
-    livekit_token: Optional[str] = Field(
-        default=None,
-        description="JWT to pass to room.connect() in livekit-client.",
-    )
-    livekit_url: Optional[str] = Field(
-        default=None,
-        description="WebSocket URL of the self-hosted LiveKit server.",
-    )
-    room_name: Optional[str] = Field(
-        default=None,
-        description="LiveKit room name (== session_id throughout the system).",
-    )
+    # Phase 4: LiveKit real-time transport (runtime flag, not build-time).
+    # Populated only when LIVEKIT_ENABLED=true and room setup succeeds;
+    # otherwise the frontend falls back to the legacy record/upload flow.
+    livekit_enabled: bool = False
+    livekit_token: Optional[str] = None
+    livekit_url: Optional[str] = None
+    room_name: Optional[str] = None
 
 
 class VoiceServiceNumberResponse(BaseModel):
@@ -143,8 +130,6 @@ class VoiceComplaintResponse(BaseModel):
     fault_type_proposal: Optional[str] = None
     severity_proposal: Optional[str] = None
     candidates: List[VoiceCandidateApp] = Field(default_factory=list)
-    potential_duplicates: list = Field(default_factory=list)
-    is_repeat_caller: bool = False
 
     # Prompt for operator
     prompt_text: str = ""
@@ -181,6 +166,17 @@ class VoiceFallbackResponse(BaseModel):
     state: str
     service_no: str
     prompt_text: str
+
+
+class VoiceAnotherComplaintResponse(BaseModel):
+    """Response from POST /api/voice/another-complaint (R-42)."""
+    session_id: str
+    state: str
+    recognized_text: str
+    wants_another: Optional[bool] = None   # True=yes, False=no, None=unclear
+    prompt_text: str
+    stt_language: Optional[str] = None
+    stt_processing_time_ms: float = 0.0
 
 
 class VoiceRetryResponse(BaseModel):

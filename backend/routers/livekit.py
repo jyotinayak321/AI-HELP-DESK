@@ -251,90 +251,6 @@ async def livekit_status():
     )
 
 
-@router.post("/flush/{session_id}", status_code=200)
-async def livekit_flush(
-    session_id: str,
-    current_user: CurrentUser = Depends(require_operator),
-):
-    """
-    Manually flush the speech buffer for a session.
-
-    Called by the frontend "Stop & Submit" button to immediately trigger
-    end-of-speech processing on whatever audio has accumulated in the
-    server-side VAD buffer, without waiting for silence detection.
-    """
-    # ── TRACE LOG 1: Did the HTTP request reach this endpoint? ────────────────
-    logger.info(
-        "[TRACE-FLUSH-1] POST /api/livekit/flush REACHED: session=%s  user=%s  "
-        "livekit_enabled=%s",
-        session_id, current_user.service_no, settings.LIVEKIT_ENABLED,
-    )
-
-    if not settings.LIVEKIT_ENABLED:
-        logger.warning("[TRACE-FLUSH-1] BLOCKED: LIVEKIT_ENABLED=False — returning 503")
-        raise HTTPException(status_code=503, detail="LiveKit not enabled.")
-
-    # ── TRACE LOG 2: Which adapter instance do we have? ───────────────────────
-    adapter = get_adapter()
-    known_sessions = list(adapter._states.keys())
-    logger.info(
-        "[TRACE-FLUSH-2] Adapter id=%s  known_sessions=%s  "
-        "target_session_present=%s",
-        id(adapter), known_sessions, session_id in adapter._states,
-    )
-
-    try:
-        # ── TRACE LOG 3: Calling flush_speech_buffer ──────────────────────────
-        logger.info(
-            "[TRACE-FLUSH-3] Calling adapter.flush_speech_buffer(session_id=%s)",
-            session_id,
-        )
-        response_wav = await adapter.flush_speech_buffer(session_id)
-        had_audio = response_wav is not None
-
-        # ── TRACE LOG 4: What did flush_speech_buffer return? ─────────────────
-        logger.info(
-            "[TRACE-FLUSH-4] flush_speech_buffer RETURNED: session=%s  "
-            "had_audio=%s  wav_size_bytes=%s",
-            session_id, had_audio,
-            len(response_wav) if response_wav else 0,
-        )
-
-        # ── TRACE LOG 5: Will we publish? ─────────────────────────────────────
-        if response_wav:
-            logger.info(
-                "[TRACE-FLUSH-5] WAV received — calling publish_response: session=%s  "
-                "wav_bytes=%d",
-                session_id, len(response_wav),
-            )
-            await adapter.publish_response(session_id, response_wav)
-            logger.info(
-                "[TRACE-FLUSH-5] publish_response DONE: session=%s", session_id
-            )
-        else:
-            logger.info(
-                "[TRACE-FLUSH-5] No WAV to publish (pipeline returned None) — "
-                "session=%s  This means either: buffer was empty, STT returned silence, "
-                "or voice pipeline had no response for current session state.",
-                session_id,
-            )
-
-        logger.info(
-            "[TRACE-FLUSH-6] Flush complete — returning response: session=%s  "
-            "status='flushed'  had_audio=%s",
-            session_id, had_audio,
-        )
-        return {"status": "flushed", "had_audio": had_audio}
-
-    except Exception as exc:
-        logger.error(
-            "[TRACE-FLUSH-ERR] EXCEPTION in flush endpoint: session=%s  "
-            "error_type=%s  error=%s",
-            session_id, type(exc).__name__, exc, exc_info=True,
-        )
-        raise HTTPException(status_code=500, detail=f"Flush failed: {exc}")
-
-
 @router.websocket("/events/{session_id}")
 async def livekit_events(session_id: str, websocket: WebSocket):
     """
@@ -360,19 +276,6 @@ async def livekit_events(session_id: str, websocket: WebSocket):
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "payload": { "detail": "Listening for session events." }
         })
-        
-        # If the agent is already connected, the frontend might have missed the 'ready' event 
-        # (race condition between Agent joining room and frontend establishing WS).
-        rm = get_room_manager()
-        from livekit_bridge.room_manager import RoomStatus
-        if rm.get_status(session_id) == RoomStatus.CONNECTED:
-            await websocket.send_json({
-                "type": "ready",
-                "session_id": session_id,
-                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "payload": { "detail": "Agent is already connected and listening." }
-            })
-
         # Keep connection alive until client disconnects
         while True:
             # Receive any message from client (keepalive pings, etc.)

@@ -95,11 +95,6 @@ class DependencyResponse(BaseModel):
 # INTAKE SCHEMAS (POST /api/intakes)
 # =====================================================================
 
-class ReanalyzeRequest(BaseModel):
-    """Payload for POST /api/intakes/{intake_id}/reanalyze"""
-    raw_text: str = Field(..., min_length=5)
-
-
 class IntakeRequest(BaseModel):
     """
     What the operator sends when a caller describes their problem.
@@ -184,7 +179,12 @@ class TicketConfirmRequest(BaseModel):
     Captures the confirmed values vs. what the AI predicted (R-22).
     """
     intake_id: int
-    confirmed_app_id: int = Field(..., description="The app the operator confirmed as primary")
+    confirmed_app_id: Optional[int] = Field(
+        default=None,
+        description="The app the operator confirmed as primary. None means the operator "
+                    "rejected all candidates (R-17) — the ticket is routed to triage "
+                    "instead of forcing a wrong label.",
+    )
     related_app_ids: list[int] = Field(
         default_factory=list,
         description="Additional affected applications",
@@ -193,6 +193,11 @@ class TicketConfirmRequest(BaseModel):
     confirmed_severity: str = Field(..., examples=["high"])
     operator_notes: str = Field(default="", examples=["User confirmed SSO was down"])
     edited_raw_text: Optional[str] = Field(default=None, description="The operator's manually edited complaint text")
+    voice_session_id: Optional[str] = Field(
+        default=None,
+        description="If this ticket originated from a voice call, the voice session ID "
+                    "(R-42) so the call's FSM can advance to ASK_ANOTHER_COMPLAINT.",
+    )
 
 
     # What the AI originally predicted (for learning loop comparison)
@@ -210,6 +215,13 @@ class TicketConfirmResponse(BaseModel):
     severity: str
     routed_to_team: str
     message: str = "Ticket created successfully"
+
+    # Populated only when the request carried a voice_session_id and the
+    # voice call FSM successfully advanced (R-42), so the frontend knows
+    # whether to loop back into the voice panel for another complaint.
+    voice_session_id: Optional[str] = None
+    voice_next_state: Optional[str] = None
+    voice_prompt_text: Optional[str] = None
 
 
 # =====================================================================

@@ -1,0 +1,25 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": [
+        "-NoProfile",
+        "-Command",
+        "cd 'C:\\Users\\rajes\\ai-help-desk-teamb\\backend'; & '.\\venv\\Scripts\\python.exe' -m uvicorn main:app --host 0.0.0.0 --port 8001"
+      ],
+      "port": 8001
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": [
+        "-NoProfile",
+        "-Command",
+        "cd 'C:\\Users\\rajes\\ai-help-desk-teamb\\frontend'; npm run dev"
+      ],
+      "port": 5173
+    }
+  ]
+}
